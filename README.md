@@ -8,8 +8,10 @@
 
 “记一笔”按钮在三个页面均可使用，也可以为记录添加照片。
 
+明细页支持导入支付宝和微信“用于个人对账”的 CSV 账单。选择文件后会在设备上预览，可逐笔取消导入并调整支出分类；重复导入的同一平台订单会自动跳过。平台发送的加密 ZIP 需先用账单密码解压，再选择其中的 CSV 文件。当前不直接读取 ZIP 或 XLSX，也不会连接支付账户。
+
 应用只在当前设备上的当前安装环境保存数据：收支与预算使用 localStorage，照片使用 IndexedDB。网页与 Android App 的数据互不相通，也不会自动同步到其他设备。
 
 ## 使用
 
-网页可直接打开根目录的 `index.html`，或通过 GitHub Pages 访问发布页面。根目录的 `index.html`、`app.js`、`styles.css` 是网页发布文件；`dist/` 是打包进 Android App 的对应页面。修改页面后，需要同步 `dist/` 中的文件并运行 `npm run android:sync`，再构建 Android 包。
+网页可直接打开根目录的 `index.html`，或通过 GitHub Pages 访问发布页面。根目录的 `index.html`、`app.js`、`bill-import.js`、`styles.css` 是网页发布文件；`dist/` 是打包进 Android App 的对应页面。修改页面后，需要同步 `dist/` 中的文件并运行 `npm run android:sync`，再构建 Android 包。

@@ -9,6 +9,7 @@ let entryType = 'expense';
 let selectedImage = null;
 let previewUrl = null;
 let visibleImageUrls = [];
+let pendingImport = [];
 let data;
 try { data = JSON.parse(localStorage.getItem('jianji-v1')) || { entries: [], budgets: {} }; }
 catch { data = { entries: [], budgets: {} }; }
@@ -186,6 +187,62 @@ $('imageButton').onclick = () => $('imageInput').click();
 $('cameraInput').onchange = e => selectImage(e.target.files[0]);
 $('imageInput').onchange = e => selectImage(e.target.files[0]);
 $('removePhoto').onclick = clearSelectedImage;
+$('openImport').onclick = () => {
+  pendingImport = [];
+  $('billFile').value = '';
+  $('billFileName').textContent = '尚未选择文件';
+  $('importSummary').textContent = '选择文件后会先预览，不会立即入账。';
+  $('importPreview').replaceChildren();
+  $('confirmImport').disabled = true;
+  open('importModal');
+};
+$('chooseBillFile').onclick = () => $('billFile').click();
+function updateImportSelection() {
+  const selected = $('importPreview').querySelectorAll('input[type="checkbox"]:checked').length;
+  $('confirmImport').disabled = selected === 0;
+  $('confirmImport').textContent = selected ? `确认导入 ${selected} 笔` : '确认导入';
+}
+$('billFile').onchange = async event => {
+  pendingImport = [];
+  $('importPreview').replaceChildren();
+  $('confirmImport').disabled = true;
+  const file = event.target.files[0];
+  if (!file) return;
+  $('billFileName').textContent = file.name;
+  $('importSummary').textContent = '正在识别账单…';
+  try {
+    const text = await JianjiBillImport.readCsvFile(file);
+    const result = JianjiBillImport.parseBill(text, file.name, data.entries.map(entry => entry.importKey).filter(Boolean));
+    pendingImport = result.entries;
+    $('importSummary').textContent = `识别为${result.source}账单：${result.entries.length} 笔可导入，${result.skipped.duplicate} 笔重复，${result.skipped.ignored} 行未计入。请核对金额与分类。`;
+    $('importPreview').innerHTML = result.entries.map((entry, index) => `<div class="import-item"><input type="checkbox" data-import-index="${index}" aria-label="导入第 ${index + 1} 笔" checked><div class="import-item-main"><b>${escapeHtml(entry.note)}</b><small>${escapeHtml(entry.transactionTime)} · ${entry.source} · ${entry.type === 'income' ? '收入' : '支出'}</small>${entry.type === 'expense' ? `<select data-category-index="${index}" aria-label="${escapeHtml(entry.note)}的分类">${cats.map(category => `<option${category === entry.category ? ' selected' : ''}>${category}</option>`).join('')}</select>` : ''}</div><span class="import-item-amount ${entry.type === 'income' ? 'income' : ''}">${entry.type === 'income' ? '+' : '−'}${money(entry.amount)}</span></div>`).join('');
+    updateImportSelection();
+  } catch (error) {
+    $('importSummary').textContent = error.message || '账单识别失败';
+  }
+};
+$('importPreview').onchange = event => {
+  if (event.target.matches('[data-category-index]')) pendingImport[Number(event.target.dataset.categoryIndex)].category = event.target.value;
+  updateImportSelection();
+};
+$('confirmImport').onclick = () => {
+  const selected = [...$('importPreview').querySelectorAll('[data-import-index]:checked')].map(box => pendingImport[Number(box.dataset.importIndex)]);
+  if (!selected.length) return;
+  const before = data.entries.length;
+  data.entries.push(...selected.map(entry => ({ ...entry, id: Date.now() + Math.random() })));
+  try { save(); }
+  catch {
+    data.entries.length = before;
+    toast('导入保存失败，请缩小账单时间范围');
+    return;
+  }
+  const latest = selected.reduce((date, entry) => entry.date > date ? entry.date : date, '');
+  view = new Date(Number(latest.slice(0, 4)), Number(latest.slice(5, 7)) - 1, 1);
+  close('importModal');
+  render();
+  switchPage('details');
+  toast(`已导入 ${selected.length} 笔记录`);
+};
 document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => close(button.dataset.close));
 document.querySelectorAll('.modalback').forEach(modal => modal.onclick = e => { if (e.target === modal) close(modal.id); });
 $('entryForm').onsubmit = async e => {
