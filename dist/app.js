@@ -3,6 +3,8 @@ const icons = { 餐饮: '☕', 交通: '🚆', 购物: '🛍', 居住: '⌂', �
 const $ = id => document.getElementById(id);
 const now = new Date();
 let view = new Date(now.getFullYear(), now.getMonth(), 1);
+let activePage = 'home';
+let detailFilter = 'all';
 let entryType = 'expense';
 let selectedImage = null;
 let previewUrl = null;
@@ -15,6 +17,7 @@ if (!data.budgets || typeof data.budgets !== 'object') data.budgets = {};
 const money = n => '¥ ' + Number(n || 0).toFixed(2);
 const key = () => `${view.getFullYear()}-${String(view.getMonth() + 1).padStart(2, '0')}`;
 const save = () => localStorage.setItem('jianji-v1', JSON.stringify(data));
+const escapeHtml = value => String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 function toast(message) {
   $('toast').textContent = message;
   $('toast').classList.add('show');
@@ -51,6 +54,35 @@ async function loadVisiblePhotos() {
     } catch { /* The ledger remains usable if browser photo storage is unavailable. */ }
   }
 }
+function renderRecordList(id, list, emptyText) {
+  const container = $(id);
+  container.innerHTML = list.map(e => `<div class="record"><div class="icon">${e.type === 'income' ? '¥' : icons[e.category] || icons.其他}</div><div class="recordtext"><b></b><small>${escapeHtml(e.date)} · ${escapeHtml(e.type === 'income' ? '收入' : e.category)}</small></div>${e.photoId ? `<img class="record-photo" data-photo-id="${escapeHtml(e.photoId)}" alt="记录图片" hidden>` : ''}<div class="amount ${e.type === 'income' ? 'income' : ''}">${e.type === 'income' ? '+' : '−'}${money(e.amount)}</div><div class="actions"><button data-delete="${escapeHtml(e.id)}" aria-label="删除记录">×</button></div></div>`).join('') || `<div class="empty">${emptyText}</div>`;
+  [...container.querySelectorAll('.record')].forEach((row, index) => {
+    row.querySelector('b').textContent = list[index].note || (list[index].type === 'income' ? '月度收入' : list[index].category);
+  });
+}
+function renderStats(list, income, expense) {
+  $('statsIncome').textContent = money(income);
+  $('statsExpense').textContent = money(expense);
+  $('statsBalance').textContent = money(income - expense);
+  const categoryTotals = cats.map(category => ({
+    category,
+    total: list.filter(e => e.type === 'expense' && e.category === category).reduce((sum, e) => sum + Number(e.amount), 0)
+  })).filter(item => item.total > 0).sort((a, b) => b.total - a.total);
+  $('categoryStats').innerHTML = categoryTotals.map(item => `<div class="category-row"><div class="rowtop"><b>${icons[item.category]} ${item.category}</b><span>${money(item.total)}</span></div><small>占本月支出 ${Math.round(item.total / expense * 100)}%</small><div class="track"><div class="fill" style="width:${Math.min(100, item.total / expense * 100)}%"></div></div></div>`).join('') || '<div class="empty">本月还没有支出记录</div>';
+  const months = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date(view.getFullYear(), view.getMonth() - 5 + index, 1);
+    const ym = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const entries = data.entries.filter(e => e.date && e.date.startsWith(ym));
+    return {
+      label: `${date.getMonth() + 1}月`,
+      income: entries.filter(e => e.type === 'income').reduce((sum, e) => sum + Number(e.amount), 0),
+      expense: entries.filter(e => e.type === 'expense').reduce((sum, e) => sum + Number(e.amount), 0)
+    };
+  });
+  const maximum = Math.max(...months.flatMap(month => [month.income, month.expense]));
+  $('trendStats').innerHTML = maximum > 0 ? `<div class="trend-chart">${months.map(month => `<div class="trend-col" aria-label="${month.label}收入${money(month.income)}，支出${money(month.expense)}"><div class="trend-bars"><div class="trend-bar income" style="height:${month.income / maximum * 100}%"></div><div class="trend-bar expense" style="height:${month.expense / maximum * 100}%"></div></div><label>${month.label}</label></div>`).join('')}</div>` : '<div class="empty">近 6 个月还没有收支记录</div>';
+}
 function render() {
   visibleImageUrls.forEach(url => URL.revokeObjectURL(url));
   visibleImageUrls = [];
@@ -62,7 +94,8 @@ function render() {
   $('income').textContent = money(income);
   $('expense').textContent = money(expense);
   $('balance').textContent = money(income - expense);
-  $('count').textContent = `共 ${list.length} 笔`;
+  const filtered = detailFilter === 'all' ? list : list.filter(e => e.type === detailFilter);
+  $('count').textContent = `共 ${filtered.length} 笔`;
   const budgets = data.budgets[ym] || {};
   $('budgets').innerHTML = cats.filter(c => Number(budgets[c]) > 0).map(c => {
     const used = list.filter(e => e.type === 'expense' && e.category === c).reduce((sum, e) => sum + Number(e.amount), 0);
@@ -70,9 +103,22 @@ function render() {
     const percent = used / limit * 100;
     return `<div class="budgetrow"><div class="rowtop"><b>${icons[c]} ${c}</b><span>${money(used)} <span class="muted">/ ${money(limit)}</span></span></div><div class="track"><div class="fill ${percent >= 100 ? 'over' : percent >= 80 ? 'warn' : ''}" style="width:${Math.min(100, percent)}%"></div></div></div>`;
   }).join('') || '<div class="empty">还没有设置预算，点右上角开始设置</div>';
-  $('records').innerHTML = list.map(e => `<div class="record"><div class="icon">${e.type === 'income' ? '¥' : icons[e.category] || icons.其他}</div><div class="recordtext"><b></b><small>${e.date} · ${e.type === 'income' ? '收入' : e.category}</small></div>${e.photoId ? `<img class="record-photo" data-photo-id="${e.photoId}" alt="记录图片" hidden>` : ''}<div class="amount ${e.type === 'income' ? 'income' : ''}">${e.type === 'income' ? '+' : '−'}${money(e.amount)}</div><div class="actions"><button data-delete="${e.id}" aria-label="删除记录">×</button></div></div>`).join('') || '<div class="empty">这个月还没有记录，点「记一笔」开始</div>';
-  [...$('records').querySelectorAll('.record')].forEach((row, index) => row.querySelector('b').textContent = list[index].note || (list[index].type === 'income' ? '月度收入' : list[index].category));
+  renderRecordList('recentRecords', list.slice(0, 3), '这个月还没有记录，点「记一笔」开始');
+  renderRecordList('records', filtered, filtered.length ? '' : detailFilter === 'all' ? '这个月还没有记录，点「记一笔」开始' : '这个月没有这类记录');
+  renderStats(list, income, expense);
   loadVisiblePhotos();
+}
+function switchPage(page, updateHash = true) {
+  activePage = ['home', 'details', 'stats'].includes(page) ? page : 'home';
+  for (const name of ['home', 'details', 'stats']) $(name + 'Page').hidden = name !== activePage;
+  document.querySelectorAll('[data-page]').forEach(button => {
+    const selected = button.dataset.page === activePage;
+    button.classList.toggle('active', selected);
+    if (selected) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+  if (updateHash) location.hash = activePage;
+  window.scrollTo(0, 0);
 }
 function open(id) { $(id).classList.add('show'); }
 function close(id) { $(id).classList.remove('show'); }
@@ -107,6 +153,18 @@ $('entryCategory').innerHTML = cats.map(c => `<option>${c}</option>`).join('');
 $('budgetCategory').innerHTML = cats.map(c => `<option>${c}</option>`).join('');
 $('prev').onclick = () => { view.setMonth(view.getMonth() - 1); render(); };
 $('next').onclick = () => { view.setMonth(view.getMonth() + 1); render(); };
+document.querySelectorAll('[data-page]').forEach(button => button.onclick = () => switchPage(button.dataset.page));
+$('allRecords').onclick = () => switchPage('details');
+document.querySelectorAll('[data-filter]').forEach(button => button.onclick = () => {
+  detailFilter = button.dataset.filter;
+  document.querySelectorAll('[data-filter]').forEach(item => {
+    const selected = item === button;
+    item.classList.toggle('active', selected);
+    item.setAttribute('aria-pressed', String(selected));
+  });
+  render();
+});
+window.addEventListener('hashchange', () => switchPage(location.hash.slice(1), false));
 $('add').onclick = () => {
   $('entryForm').reset();
   $('entryDate').value = new Date().toLocaleDateString('en-CA');
@@ -160,7 +218,7 @@ $('budgetForm').onsubmit = e => {
   data.budgets[key()][$('budgetCategory').value] = amount;
   save(); close('budgetModal'); render(); toast('预算已更新');
 };
-$('records').onclick = e => {
+function handleRecordClick(e) {
   if (e.target.matches('.record-photo')) { window.open(e.target.src, '_blank'); return; }
   const button = e.target.closest('[data-delete]');
   if (!button || !confirm('确定删除这笔记录吗？')) return;
@@ -169,5 +227,7 @@ $('records').onclick = e => {
   save();
   if (entry?.photoId) photoStore('delete', entry.photoId).catch(() => {});
   render(); toast('记录已删除');
-};
+}
+document.querySelectorAll('.record-list').forEach(container => container.onclick = handleRecordClick);
 render();
+switchPage(location.hash.slice(1), false);
