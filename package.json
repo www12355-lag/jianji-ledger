@@ -1,0 +1,26 @@
+{
+  "name": "jianji-ledger",
+  "private": true,
+  "version": "1.0.0",
+  "description": "一个轻量的手机网页记账应用，可记录每日收支、设置分类月度预算，并为记录添加照片。",
+  "scripts": {
+    "android:sync": "cap sync android",
+    "android:open": "cap open android"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/www12355-lag/jianji-ledger.git"
+  },
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/www12355-lag/jianji-ledger/issues"
+  },
+  "homepage": "https://github.com/www12355-lag/jianji-ledger#readme",
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
+  }
+}
