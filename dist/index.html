@@ -90,8 +90,8 @@
   </div></div>
   <div class="modalback" id="importModal"><div class="modal import-modal">
     <div class="modalhead"><h2>导入账单</h2><button class="close" data-close="importModal" aria-label="关闭">×</button></div>
-    <p class="import-help">选择支付宝或微信“用于个人对账”导出的 CSV 明细。若收到加密 ZIP，请先用账单密码解压。文件只在这台设备上读取。</p>
-    <div class="file-field"><span>选择账单 CSV</span><div class="file-choice"><button type="button" id="chooseBillFile">选择文件</button><span id="billFileName">尚未选择文件</span></div><input id="billFile" type="file" accept=".csv,.txt,text/csv,text/plain" hidden></div>
+    <p class="import-help">选择微信或支付宝“用于个人对账”导出的 Excel（.xlsx）或 CSV 明细。若收到加密 ZIP，请先用账单密码解压。PDF 暂不支持自动识别。文件只在这台设备上读取。</p>
+    <div class="file-field"><span>选择账单 Excel / CSV</span><div class="file-choice"><button type="button" id="chooseBillFile">选择文件</button><span id="billFileName">尚未选择文件</span></div><input id="billFile" type="file" accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" hidden></div>
     <div id="importSummary" class="import-summary" aria-live="polite">选择文件后会先预览，不会立即入账。</div>
     <div id="importPreview" class="import-preview"></div>
     <button class="primary" id="confirmImport" disabled>确认导入</button>

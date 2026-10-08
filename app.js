@@ -211,8 +211,8 @@ $('billFile').onchange = async event => {
   $('billFileName').textContent = file.name;
   $('importSummary').textContent = '正在识别账单…';
   try {
-    const text = await JianjiBillImport.readCsvFile(file);
-    const result = JianjiBillImport.parseBill(text, file.name, data.entries.map(entry => entry.importKey).filter(Boolean));
+    const rows = await JianjiBillImport.readBillFile(file);
+    const result = JianjiBillImport.parseBill(rows, file.name, data.entries.map(entry => entry.importKey).filter(Boolean));
     pendingImport = result.entries;
     $('importSummary').textContent = `识别为${result.source}账单：${result.entries.length} 笔可导入，${result.skipped.duplicate} 笔重复，${result.skipped.ignored} 行未计入。请核对金额与分类。`;
     $('importPreview').innerHTML = result.entries.map((entry, index) => `<div class="import-item"><input type="checkbox" data-import-index="${index}" aria-label="导入第 ${index + 1} 笔" checked><div class="import-item-main"><b>${escapeHtml(entry.note)}</b><small>${escapeHtml(entry.transactionTime)} · ${entry.source} · ${entry.type === 'income' ? '收入' : '支出'}</small>${entry.type === 'expense' ? `<select data-category-index="${index}" aria-label="${escapeHtml(entry.note)}的分类">${cats.map(category => `<option${category === entry.category ? ' selected' : ''}>${category}</option>`).join('')}</select>` : ''}</div><span class="import-item-amount ${entry.type === 'income' ? 'income' : ''}">${entry.type === 'income' ? '+' : '−'}${money(entry.amount)}</span></div>`).join('');

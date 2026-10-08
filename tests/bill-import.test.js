@@ -35,5 +35,13 @@ assert.equal(second.entries.length, 2);
 assert.equal(second.entries[0].category, '交通');
 assert.equal(second.entries[1].type, 'income');
 assert.notEqual(second.entries[0].importKey, second.entries[1].importKey);
+const excelRows = [
+  ['微信支付账单明细列表'],
+  ['交易时间', '交易类型', '交易对方', '商品', '收/支', '金额(元)', '支付方式', '当前状态', '交易单号'],
+  ['46303.5', '商户消费', '咖啡店', '咖啡', '支出', '12.50', '零钱', '支付成功', 'WXEXCEL']
+];
+const fromExcel = parseBill(excelRows, '微信账单.xlsx');
+assert.equal(fromExcel.entries.length, 1);
+assert.match(fromExcel.entries[0].date, /^2026-/);
 assert.throws(() => parseBill('a,b,c\n1,2,3', '账单.csv'), /找不到/);
 console.log('bill import parser: passed');
