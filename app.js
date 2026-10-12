@@ -20,7 +20,7 @@ let pendingImport = [];
 let importFilter = 'all';
 let paymentDraftId = null;
 let paymentNotices = [];
-let data = { entries: [], budgets: {}, customCategories: [], recurring: [], recurringAcknowledged: {}, accounts: [], importRules: [], templates: [], annualPlans: [], lastBackupAt: '' };
+let data = { entries: [], budgets: {}, customCategories: [], recurring: [], recurringAcknowledged: {}, accounts: [], importRules: [], templates: [], annualPlans: [], cashFlowPlans: [], projects: [], receivables: [], entryHistory: [], lastBackupAt: '' };
 function normalizeData() {
   if (!Array.isArray(data.entries)) data.entries = [];
   if (!data.budgets || typeof data.budgets !== 'object') data.budgets = {};
@@ -31,6 +31,10 @@ function normalizeData() {
   if (!Array.isArray(data.importRules)) data.importRules = [];
   if (!Array.isArray(data.templates)) data.templates = [];
   if (!Array.isArray(data.annualPlans)) data.annualPlans = [];
+  if (!Array.isArray(data.cashFlowPlans)) data.cashFlowPlans = [];
+  if (!Array.isArray(data.projects)) data.projects = [];
+  if (!Array.isArray(data.receivables)) data.receivables = [];
+  if (!Array.isArray(data.entryHistory)) data.entryHistory = [];
   if (typeof data.missingCheckEnabled !== 'boolean') data.missingCheckEnabled = true;
   if (typeof data.missingCheckDismissedUntil !== 'string') data.missingCheckDismissedUntil = '';
   if (typeof data.lastBackupAt !== 'string') data.lastBackupAt = '';
@@ -97,7 +101,9 @@ function renderRecordList(id, list, emptyText) {
     row.querySelector('b').textContent = entry.note || (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '月度收入' : entry.type === 'refund' ? '退款' : Array.isArray(entry.splits) && entry.splits.length ? '多类别支出' : entry.category);
     const accountName = id => data.accounts.find(account => account.id === id)?.name || '未知账户';
     const accountText = entry.transferFrom ? ` · ${accountName(entry.transferFrom)} → ${accountName(entry.transferTo)}` : entry.accountId ? ` · ${accountName(entry.accountId)}` : '';
-    row.querySelector('small').textContent = entry.date + ' · ' + (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '收入' : entry.type === 'excluded' ? '不计收支' : entry.type === 'refund' ? `${entry.category}退款` : Array.isArray(entry.splits) && entry.splits.length ? entry.splits.map(part => `${part.category}${money(part.amount)}`).join('、') : entry.category) + (entry.merchant ? ` · ${entry.merchant}` : '') + (entry.source ? ` · ${entry.source}` : '') + accountText;
+    const loanText = entry.receivableId ? ` · ${entry.receivableKind === 'loan' ? '借出' : '收回借款'}` : '';
+    const projectText = (entry.projectIds || []).map(id => data.projects.find(project => project.id === id)?.name).filter(Boolean).join('、');
+    row.querySelector('small').textContent = entry.date + ' · ' + (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '收入' : entry.type === 'excluded' ? '不计收支' : entry.type === 'refund' ? `${entry.category}退款` : Array.isArray(entry.splits) && entry.splits.length ? entry.splits.map(part => `${part.category}${money(part.amount)}`).join('、') : entry.category) + (entry.merchant ? ` · ${entry.merchant}` : '') + (entry.source ? ` · ${entry.source}` : '') + loanText + accountText + (projectText ? ` · #${projectText}` : '');
   });
 }
 function renderStats(list, income, expense) {
@@ -159,11 +165,13 @@ function render() {
   const search = $('recordSearch').value.trim().toLocaleLowerCase();
   const source = $('recordSource').value;
   const category = $('recordCategory').value;
+  const projectId = $('recordProject').value;
   const detailList = $('allMonths').checked ? liveEntries().sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id) : list;
   const filtered = detailList.filter(e => (detailFilter === 'all' || e.type === detailFilter || detailFilter === 'expense' && e.type === 'refund')
     && (!search || `${e.note || ''} ${e.merchant || ''} ${e.source || ''} ${e.category || ''}`.toLocaleLowerCase().includes(search))
     && (!source || (source === 'manual' ? !e.source : e.source === source))
-    && (!category || e.category === category || e.type === 'expense' && JianjiFeatures.expenseParts(e).some(part => part.category === category)));
+    && (!category || e.category === category || e.type === 'expense' && JianjiFeatures.expenseParts(e).some(part => part.category === category))
+    && (!projectId || (e.projectIds || []).includes(projectId)));
   $('count').textContent = `共 ${filtered.length} 笔`;
   const budgets = data.budgets[ym] || {};
   $('budgets').innerHTML = cats.filter(c => Number(budgets[c]) > 0).map(c => {
@@ -187,6 +195,9 @@ function render() {
   renderTemplates();
   renderAnnualPlans();
   renderMissingCheck();
+  renderCashFlow();
+  renderProjects();
+  renderReceivables();
   renderRecordList('recentRecords', list.slice(0, 3), '这个月还没有记录，点「记一笔」开始');
   renderRecordList('records', filtered, filtered.length ? '' : detailFilter === 'all' ? '这个月还没有记录，点「记一笔」开始' : '这个月没有这类记录');
   renderStats(list, income, expense);
@@ -286,12 +297,43 @@ function renderCustomCategories() {
   $('customCategoryList').innerHTML = data.customCategories.map((item, index) => `<div class="settings-row"><span class="category-mini ${toneClass(item.name)}">${iconMarkup(item.name)}</span><input data-category-edit="${index}" maxlength="12" value="${escapeHtml(item.name)}" aria-label="分类名称"><button data-category-rename="${index}">改名</button><button data-category-delete="${index}">删除</button></div>`).join('') || '<div class="empty">还没有自定义分类</div>';
 }
 function refreshAccountUI() {
-  for (const id of ['entryAccount', 'transferFrom', 'transferTo', 'templateAccount', 'reconcileAccount']) {
+  for (const id of ['entryAccount', 'transferFrom', 'transferTo', 'templateAccount', 'reconcileAccount', 'cashFlowAccount', 'cashPlanAccount', 'recurringAccount', 'loanAccount', 'repaymentAccount']) {
     const select = $(id);
     const selected = select.value;
-    select.innerHTML = (id === 'entryAccount' || id === 'templateAccount' ? '<option value="">未指定账户</option>' : '') + data.accounts.map(account => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.name)}</option>`).join('');
+    const blank = id === 'cashFlowAccount' ? '<option value="">全部账户</option>' : ['entryAccount', 'templateAccount', 'cashPlanAccount', 'recurringAccount', 'loanAccount', 'repaymentAccount'].includes(id) ? '<option value="">未指定账户</option>' : '';
+    select.innerHTML = blank + data.accounts.map(account => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.name)}</option>`).join('');
     if (selected && data.accounts.some(account => account.id === selected)) select.value = selected;
   }
+}
+function refreshProjectUI() {
+  const selected = $('recordProject').value;
+  $('recordProject').innerHTML = '<option value="">全部项目</option>' + data.projects.map(project => `<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)}</option>`).join('');
+  if (data.projects.some(project => project.id === selected)) $('recordProject').value = selected;
+  $('entryProjectChoices').innerHTML = data.projects.map(project => `<label><input type="checkbox" value="${escapeHtml(project.id)}"> ${escapeHtml(project.name)}</label>`).join('') || '<span class="muted">还没有项目标签</span>';
+}
+function selectedProjectIds() { return [...$('entryProjectChoices').querySelectorAll('input:checked')].map(input => input.value); }
+function setSelectedProjects(ids = []) { $('entryProjectChoices').querySelectorAll('input').forEach(input => { input.checked = ids.includes(input.value); }); }
+function renderProjects() {
+  $('projectSummary').innerHTML = data.projects.map(project => `<div class="budgetrow"><div class="rowtop"><b>${escapeHtml(project.name)}</b><span>净支出 ${money(JianjiFeatures.projectNet(project.id, data.entries))}</span></div></div>`).join('') || '<div class="empty">用项目标签汇总旅行、装修等跨类别支出</div>';
+  $('projectList').innerHTML = data.projects.map(project => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(project.name)}</b><small>关联 ${data.entries.filter(entry => !entry.deletedAt && (entry.projectIds || []).includes(project.id)).length} 笔 · 净支出 ${money(JianjiFeatures.projectNet(project.id, data.entries))}</small></div><button data-project-edit="${escapeHtml(project.id)}">改名</button><button data-project-delete="${escapeHtml(project.id)}">删除</button></div>`).join('') || '<div class="empty">还没有项目标签</div>';
+}
+function renderCashFlow() {
+  const filter = $('cashFlowAccount').value;
+  const forecast = JianjiFeatures.cashFlowForecast(data, new Date(), filter);
+  const end = forecast.days.at(-1)?.balance ?? forecast.startBalance ?? 0;
+  const scope = filter ? data.accounts.find(account => account.id === filter)?.name || '所选账户' : '全部账户';
+  $('cashFlowSummary').textContent = forecast.startBalance === null ? '还没有设置账户；下方只显示计划变动，无法预测账户余额。' : `${scope}当前账面余额 ${money(forecast.startBalance)}；按计划预计 30 天后 ${money(end)}。计划不会自动入账；未指定账户的记录和计划不计入余额预测。`;
+  $('cashFlowDays').innerHTML = forecast.days.map(day => `<div class="cash-flow-day${day.balance < 0 && forecast.startBalance !== null ? ' negative' : ''}"><b>${escapeHtml(day.date.slice(5))}</b><span>${day.events.length ? day.events.map(item => `${escapeHtml(item.label)} ${item.delta >= 0 ? '+' : '−'}${money(Math.abs(item.delta))}`).join('；') : '—'}</span><strong>${forecast.startBalance === null ? '' : money(day.balance)}</strong></div>`).join('') || '<div class="empty">暂无未来日期</div>';
+  $('cashFlowPlanList').innerHTML = data.cashFlowPlans.map(plan => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(plan.note)}</b><small>${escapeHtml(plan.date)} · ${plan.type === 'income' ? '收入' : '支出'} ${money(plan.amount)} · ${plan.done ? '已完成' : '待发生'}</small></div><button data-cash-edit="${escapeHtml(plan.id)}">编辑</button><button data-cash-toggle="${escapeHtml(plan.id)}">${plan.done ? '重新计划' : '标记完成'}</button><button data-cash-delete="${escapeHtml(plan.id)}">删除</button></div>`).join('') || '<div class="empty">暂无一次性计划收支</div>';
+}
+function renderReceivables() {
+  const openLoans = data.receivables.filter(loan => !loan.archived);
+  $('receivableSummary').innerHTML = openLoans.map(loan => `<div class="budgetrow"><div class="rowtop"><b>${escapeHtml(loan.person)}</b><span>待收 ${money(JianjiFeatures.receivableOutstanding(loan, data.entries))}</span></div><small>约定 ${escapeHtml(loan.dueDate)}${loan.dueDate < new Date().toLocaleDateString('en-CA') && JianjiFeatures.receivableOutstanding(loan, data.entries) > 0 ? ' · 已逾期' : ''}</small></div>`).join('') || '<div class="empty">目前没有待收款</div>';
+  $('receivableList').innerHTML = data.receivables.map(loan => {
+    const payments = data.entries.filter(entry => !entry.deletedAt && entry.receivableId === loan.id && entry.receivableKind === 'repayment');
+    return `<div class="annual-plan-row"><div class="settings-row-main"><b>${escapeHtml(loan.person)} · 借出 ${money(loan.amount)}</b><small>待收 ${money(JianjiFeatures.receivableOutstanding(loan, data.entries))} · 到期 ${escapeHtml(loan.dueDate)}${loan.archived ? ' · 已归档' : ''}</small></div><div class="annual-plan-actions"><button data-loan-edit="${escapeHtml(loan.id)}">编辑</button><button data-loan-archive="${escapeHtml(loan.id)}">${loan.archived ? '恢复显示' : '归档'}</button>${payments.length ? '' : `<button data-loan-void="${escapeHtml(loan.id)}">撤销借出</button>`}</div>${payments.map(entry => `<div class="loan-payment"><small>${escapeHtml(entry.date)} 收回 ${money(entry.amount)}</small><button data-loan-payment-undo="${escapeHtml(entry.id)}">撤销</button></div>`).join('')}</div>`;
+  }).join('') || '<div class="empty">还没有借出记录</div>';
+  $('repaymentLoan').innerHTML = data.receivables.filter(loan => !loan.archived && JianjiFeatures.receivableOutstanding(loan, data.entries) > 0).map(loan => `<option value="${escapeHtml(loan.id)}">${escapeHtml(loan.person)} · 待收 ${money(JianjiFeatures.receivableOutstanding(loan, data.entries))}</option>`).join('');
 }
 function renderAccounts() {
   $('accountList').innerHTML = data.accounts.map(account => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(account.name)}</b><small>当前余额 ${money(JianjiFeatures.accountBalance(account, data.entries))}${account.lastReconciledAt ? ` · 上次核对 ${escapeHtml(account.lastReconciledAt.slice(0, 10))}` : ''}</small></div><button data-account-edit="${escapeHtml(account.id)}">编辑</button><button data-account-delete="${escapeHtml(account.id)}">删除</button></div>`).join('') || '<div class="empty">还没有账户，可先添加现金、银行卡等</div>';
@@ -318,7 +360,9 @@ function renderMissingCheck() {
 }
 refreshCategoryUI();
 refreshAccountUI();
-for (const id of ['recordSearch', 'recordCategory', 'recordSource', 'allMonths']) $(id).addEventListener('input', render);
+refreshProjectUI();
+for (const id of ['recordSearch', 'recordCategory', 'recordSource', 'recordProject', 'allMonths']) $(id).addEventListener('input', render);
+$('cashFlowAccount').onchange = renderCashFlow;
 $('prev').onclick = () => { view.setMonth(view.getMonth() - 1); render(); };
 $('next').onclick = () => { view.setMonth(view.getMonth() + 1); render(); };
 document.querySelectorAll('[data-page]').forEach(button => button.onclick = () => switchPage(button.dataset.page));
@@ -341,6 +385,7 @@ function openNewEntry(category = '餐饮') {
   $('splitRows').replaceChildren();
   $('removeStoredPhotoField').hidden = true;
   $('entryDate').value = new Date().toLocaleDateString('en-CA');
+  setSelectedProjects([]);
   $('merchantRuleSuggestion').hidden = true;
   clearSelectedImage();
   setType('expense');
@@ -363,6 +408,145 @@ $('heroAdd').onclick = () => openNewEntry();
 $('categoryShortcuts').onclick = event => {
   const button = event.target.closest('[data-quick-category]');
   if (button) openNewEntry(button.dataset.quickCategory);
+};
+let editingProjectId = null;
+function resetProjectForm() { editingProjectId = null; $('projectForm').reset(); $('projectForm').querySelector('button.primary').textContent = '添加项目'; $('cancelProjectEdit').hidden = true; }
+$('manageProjects').onclick = () => { resetProjectForm(); renderProjects(); open('projectModal'); };
+$('cancelProjectEdit').onclick = resetProjectForm;
+$('projectForm').onsubmit = async event => {
+  event.preventDefault();
+  const name = $('projectName').value.trim();
+  if (!name || data.projects.some(project => project.name === name && project.id !== editingProjectId)) return toast('项目名称已存在或无效');
+  if (!editingProjectId && data.projects.length >= 100) return toast('项目已达到上限');
+  const before = structuredClone(data.projects);
+  const existing = data.projects.find(project => project.id === editingProjectId);
+  if (existing) existing.name = name; else data.projects.push({ id: crypto.randomUUID(), name });
+  try { await save(); } catch { data.projects = before; return toast('项目保存失败'); }
+  resetProjectForm(); refreshProjectUI(); render(); toast('项目已保存');
+};
+$('projectList').onclick = async event => {
+  const edit = event.target.closest('[data-project-edit]'), remove = event.target.closest('[data-project-delete]');
+  const project = data.projects.find(item => item.id === (edit?.dataset.projectEdit || remove?.dataset.projectDelete));
+  if (!project) return;
+  if (edit) {
+    editingProjectId = project.id; $('projectName').value = project.name;
+    $('projectForm').querySelector('button.primary').textContent = '保存项目名称'; $('cancelProjectEdit').hidden = false;
+    $('projectForm').scrollIntoView({ behavior: 'smooth', block: 'start' }); return;
+  }
+  if (data.entries.some(entry => (entry.projectIds || []).includes(project.id))) return toast('这个项目仍关联账目，请先移除账目标签');
+  const before = data.projects;
+  data.projects = before.filter(item => item !== project);
+  try { await save(); } catch { data.projects = before; return toast('项目删除失败'); }
+  if (editingProjectId === project.id) resetProjectForm();
+  refreshProjectUI(); render();
+};
+let editingCashPlanId = null;
+function resetCashPlanForm() { editingCashPlanId = null; $('cashFlowPlanForm').reset(); $('cashPlanDate').value = new Date().toLocaleDateString('en-CA'); $('cashFlowPlanForm').querySelector('button.primary').textContent = '添加计划'; $('cancelCashPlanEdit').hidden = true; }
+$('manageCashFlow').onclick = () => { resetCashPlanForm(); renderCashFlow(); open('cashFlowModal'); };
+$('cancelCashPlanEdit').onclick = resetCashPlanForm;
+$('cashFlowPlanForm').onsubmit = async event => {
+  event.preventDefault();
+  const amount = Number($('cashPlanAmount').value);
+  if (!Number.isFinite(amount) || amount <= 0 || !$('cashPlanNote').value.trim() || !/^\d{4}-\d{2}-\d{2}$/.test($('cashPlanDate').value)) return toast('计划信息无效');
+  if (!editingCashPlanId && data.cashFlowPlans.length >= 1000) return toast('计划收支已达到上限');
+  const before = structuredClone(data.cashFlowPlans);
+  const index = data.cashFlowPlans.findIndex(plan => plan.id === editingCashPlanId);
+  const plan = { ...(index >= 0 ? data.cashFlowPlans[index] : { id: crypto.randomUUID(), done: false }), note: $('cashPlanNote').value.trim(), type: $('cashPlanType').value, amount, date: $('cashPlanDate').value, accountId: $('cashPlanAccount').value };
+  if (index >= 0) data.cashFlowPlans[index] = plan; else data.cashFlowPlans.push(plan);
+  try { await save(); } catch { data.cashFlowPlans = before; return toast('计划保存失败'); }
+  resetCashPlanForm(); renderCashFlow(); toast('计划已保存');
+};
+$('cashFlowPlanList').onclick = async event => {
+  const edit = event.target.closest('[data-cash-edit]'), toggle = event.target.closest('[data-cash-toggle]'), remove = event.target.closest('[data-cash-delete]');
+  const plan = data.cashFlowPlans.find(item => item.id === (edit?.dataset.cashEdit || toggle?.dataset.cashToggle || remove?.dataset.cashDelete));
+  if (!plan) return;
+  if (edit) {
+    editingCashPlanId = plan.id;
+    $('cashPlanNote').value = plan.note; $('cashPlanType').value = plan.type; $('cashPlanAmount').value = plan.amount;
+    $('cashPlanDate').value = plan.date; $('cashPlanAccount').value = plan.accountId || '';
+    $('cashFlowPlanForm').querySelector('button.primary').textContent = '保存修改'; $('cancelCashPlanEdit').hidden = false;
+    $('cashFlowPlanForm').scrollIntoView({ behavior: 'smooth', block: 'start' }); return;
+  }
+  const before = structuredClone(data.cashFlowPlans);
+  if (toggle) plan.done = !plan.done;
+  else data.cashFlowPlans = data.cashFlowPlans.filter(item => item !== plan);
+  try { await save(); } catch { data.cashFlowPlans = before; return toast('计划更新失败'); }
+  if (remove && editingCashPlanId === plan.id) resetCashPlanForm();
+  renderCashFlow();
+};
+let editingLoanId = null;
+function resetLoanForm() {
+  editingLoanId = null;
+  $('receivableForm').reset();
+  $('loanDate').value = new Date().toLocaleDateString('en-CA');
+  $('loanAmount').disabled = false; $('loanDate').disabled = false; $('loanAccount').disabled = false;
+  $('receivableForm').querySelector('button.primary').textContent = '记录借出'; $('cancelLoanEdit').hidden = true;
+}
+$('manageReceivables').onclick = () => { resetLoanForm(); $('repaymentForm').reset(); $('repaymentDate').value = new Date().toLocaleDateString('en-CA'); renderReceivables(); open('receivableModal'); };
+$('cancelLoanEdit').onclick = resetLoanForm;
+$('receivableForm').onsubmit = async event => {
+  event.preventDefault();
+  const amount = Number($('loanAmount').value), person = $('loanPerson').value.trim(), date = $('loanDate').value, dueDate = $('loanDue').value;
+  if (!person || !Number.isFinite(amount) || amount <= 0 || !date || !dueDate || dueDate < date) return toast('请填写有效借出金额和日期；约定日期不能早于借出日期');
+  if (editingLoanId) {
+    const loan = data.receivables.find(item => item.id === editingLoanId);
+    if (!loan) return toast('借款记录不存在');
+    const before = structuredClone(loan);
+    loan.person = person; loan.dueDate = dueDate; loan.note = $('loanNote').value.trim();
+    try { await save(); } catch { Object.assign(loan, before); return toast('借款修改失败'); }
+    resetLoanForm(); renderReceivables(); toast('借款信息已更新'); return;
+  }
+  if (data.receivables.length >= 1000) return toast('借款记录已达到上限');
+  const loan = { id: crypto.randomUUID(), person, amount, date, dueDate, note: $('loanNote').value.trim(), archived: false };
+  const entry = { id: crypto.randomUUID(), type: 'excluded', amount, date, category: '', note: `借给${person}${loan.note ? `：${loan.note}` : ''}`, accountId: $('loanAccount').value, accountDelta: $('loanAccount').value ? -amount : 0, receivableId: loan.id, receivableKind: 'loan' };
+  data.receivables.push(loan); data.entries.push(entry);
+  try { await save(); } catch { data.receivables.pop(); data.entries.pop(); return toast('借出记录保存失败'); }
+  resetLoanForm(); renderReceivables(); render(); toast('已记录借出');
+};
+$('repaymentForm').onsubmit = async event => {
+  event.preventDefault();
+  const loan = data.receivables.find(item => item.id === $('repaymentLoan').value && !item.archived);
+  const amount = Number($('repaymentAmount').value);
+  if (!loan || !Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) > Math.round(JianjiFeatures.receivableOutstanding(loan, data.entries) * 100)) return toast('收回金额超过待收余额');
+  const accountId = $('repaymentAccount').value;
+  const entry = { id: crypto.randomUUID(), type: 'excluded', amount, date: $('repaymentDate').value, category: '', note: `${loan.person}还款`, accountId, accountDelta: accountId ? amount : 0, receivableId: loan.id, receivableKind: 'repayment' };
+  data.entries.push(entry);
+  try { await save(); } catch { data.entries.pop(); return toast('收款记录保存失败'); }
+  $('repaymentAmount').value = ''; renderReceivables(); render(); toast('已记录收款');
+};
+$('receivableList').onclick = async event => {
+  const edit = event.target.closest('[data-loan-edit]'), archive = event.target.closest('[data-loan-archive]'), voidLoan = event.target.closest('[data-loan-void]'), undoPayment = event.target.closest('[data-loan-payment-undo]');
+  if (undoPayment) {
+    const entry = data.entries.find(item => String(item.id) === undoPayment.dataset.loanPaymentUndo && item.receivableKind === 'repayment' && !item.deletedAt);
+    if (!entry) return;
+    entry.deletedAt = new Date().toISOString();
+    try { await save(); } catch { delete entry.deletedAt; return toast('撤销还款失败'); }
+    renderReceivables(); render(); toast('已撤销这笔还款'); return;
+  }
+  const loan = data.receivables.find(item => item.id === (edit?.dataset.loanEdit || archive?.dataset.loanArchive || voidLoan?.dataset.loanVoid));
+  if (!loan) return;
+  if (edit) {
+    editingLoanId = loan.id;
+    $('loanPerson').value = loan.person; $('loanAmount').value = loan.amount; $('loanDate').value = loan.date;
+    $('loanDue').value = loan.dueDate; $('loanNote').value = loan.note || '';
+    $('loanAmount').disabled = true; $('loanDate').disabled = true; $('loanAccount').disabled = true;
+    $('receivableForm').querySelector('button.primary').textContent = '保存借款信息'; $('cancelLoanEdit').hidden = false;
+    $('receivableForm').scrollIntoView({ behavior: 'smooth', block: 'start' }); return;
+  }
+  if (archive) {
+    if (!loan.archived && JianjiFeatures.receivableOutstanding(loan, data.entries) > 0) return toast('还有待收余额，不能归档');
+    loan.archived = !loan.archived;
+    try { await save(); } catch { loan.archived = !loan.archived; return toast('归档失败'); }
+    renderReceivables(); render(); return;
+  }
+  if (data.entries.some(entry => entry.receivableId === loan.id && entry.receivableKind === 'repayment' && !entry.deletedAt)) return toast('已有收款记录，先撤销收款');
+  if (!confirm(`撤销借给「${loan.person}」的记录吗？关联的借款及已撤销还款记录会永久移除。`)) return;
+  const before = data.receivables;
+  const beforeEntries = data.entries;
+  data.receivables = before.filter(item => item !== loan);
+  data.entries = beforeEntries.filter(entry => entry.receivableId !== loan.id);
+  try { await save(); } catch { data.receivables = before; data.entries = beforeEntries; return toast('撤销借出失败'); }
+  resetLoanForm(); renderReceivables(); render(); toast('已撤销借出');
 };
 let editingTemplateId = null;
 $('manageTemplates').onclick = () => { editingTemplateId = null; $('templateForm').reset(); $('templateForm').querySelector('button.primary').textContent = '添加模板'; renderTemplates(); open('templateModal'); };
@@ -573,7 +757,7 @@ $('accountList').onclick = async event => {
     $('accountForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
     return;
   }
-  if (data.entries.some(entry => entry.accountId === account.id || entry.transferFrom === account.id || entry.transferTo === account.id) || data.templates.some(template => template.accountId === account.id) || account.reconciliations?.length) return toast('此账户仍有关联账目、模板或对账记录，请先处理');
+  if (data.entries.some(entry => entry.accountId === account.id || entry.transferFrom === account.id || entry.transferTo === account.id) || data.templates.some(template => template.accountId === account.id) || data.cashFlowPlans.some(plan => plan.accountId === account.id) || data.recurring.some(rule => rule.accountId === account.id) || account.reconciliations?.length) return toast('此账户仍有关联账目、模板、计划或对账记录，请先处理');
   const before = data.accounts;
   data.accounts = before.filter(item => item !== account);
   try { await save(); } catch { data.accounts = before; return toast('账户删除失败'); }
@@ -633,7 +817,8 @@ $('transferForm').onsubmit = async event => {
   const entry = { ...old, id: old?.id ?? crypto.randomUUID(), type: 'excluded', amount, date: $('transferDate').value, category: '', note: $('transferNote').value.trim() || '账户转账', transferFrom: from, transferTo: to };
   const index = old ? data.entries.indexOf(old) : -1;
   if (index >= 0) data.entries[index] = entry; else data.entries.push(entry);
-  try { await save(); } catch { if (index >= 0) data.entries[index] = old; else data.entries.pop(); return toast('转账保存失败'); }
+  rememberEntry(old ? '编辑转账' : '新增转账', old, entry);
+  try { await save(); } catch { if (index >= 0) data.entries[index] = old; else data.entries.pop(); data.entryHistory.shift(); return toast('转账保存失败'); }
   editingTransferId = null;
   $('transferForm').querySelector('button').textContent = '记录转账';
   $('transferAmount').value = ''; $('transferNote').value = '';
@@ -686,6 +871,7 @@ function resetRecurringForm() {
   editingRecurringId = null;
   $('recurringForm').reset();
   $('recurringStart').value = new Date().toLocaleDateString('en-CA');
+  $('recurringAccount').value = '';
   $('saveRecurringRule').textContent = '添加周期账目';
   $('cancelRecurringEdit').hidden = true;
   setRecurringType('expense');
@@ -709,7 +895,7 @@ $('recurringForm').onsubmit = async event => {
   if (!Number.isFinite(amount) || amount <= 0) return;
   const existing = editingRecurringId === null ? null : data.recurring.find(item => item.id === editingRecurringId);
   if (editingRecurringId !== null && !existing) return toast('周期规则不存在，请重新打开');
-  const rule = { ...existing, id: existing?.id || String(Date.now() + Math.random()), type: recurringType, amount, category: recurringType === 'expense' ? $('recurringCategory').value : '', note: $('recurringNote').value.trim(), frequency: $('recurringFrequency').value, startDate: $('recurringStart').value, active: existing?.active !== false };
+  const rule = { ...existing, id: existing?.id || String(Date.now() + Math.random()), type: recurringType, amount, category: recurringType === 'expense' ? $('recurringCategory').value : '', note: $('recurringNote').value.trim(), frequency: $('recurringFrequency').value, startDate: $('recurringStart').value, accountId: $('recurringAccount').value, active: existing?.active !== false };
   const index = existing ? data.recurring.indexOf(existing) : -1;
   if (index >= 0) data.recurring[index] = rule; else data.recurring.push(rule);
   try { await save(); } catch { if (index >= 0) data.recurring[index] = existing; else data.recurring.pop(); return toast('周期账目保存失败'); }
@@ -731,6 +917,7 @@ $('recurringRules').onclick = async event => {
     $('recurringNote').value = rule.note;
     $('recurringFrequency').value = rule.frequency;
     $('recurringStart').value = rule.startDate;
+    $('recurringAccount').value = rule.accountId || '';
     $('saveRecurringRule').textContent = '保存修改';
     $('cancelRecurringEdit').hidden = false;
     $('recurringForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -751,10 +938,11 @@ $('recurringDue').onclick = async event => {
   const rule = data.recurring.find(item => item.id === id);
   const occurrenceKey = `${id}|${date}`;
   if (!rule || data.recurringAcknowledged[occurrenceKey]) return;
-  const entry = post ? { id: Date.now() + Math.random(), type: rule.type, amount: rule.amount, date, category: rule.category, note: rule.note, recurringKey: occurrenceKey } : null;
+  const entry = post ? { id: Date.now() + Math.random(), type: rule.type, amount: rule.amount, date, category: rule.category, note: rule.note, accountId: rule.accountId || '', recurringKey: occurrenceKey } : null;
   if (entry) data.entries.push(entry);
   data.recurringAcknowledged[occurrenceKey] = post ? 'posted' : 'skipped';
-  try { await save(); } catch { if (entry) data.entries.pop(); delete data.recurringAcknowledged[occurrenceKey]; return toast('保存失败'); }
+  if (entry) rememberEntry('周期入账', null, entry);
+  try { await save(); } catch { if (entry) { data.entries.pop(); data.entryHistory.shift(); } delete data.recurringAcknowledged[occurrenceKey]; return toast('保存失败'); }
   render(); toast(post ? '周期账目已记入' : '已跳过本期');
 };
 $('expenseTab').onclick = () => setType('expense');
@@ -916,10 +1104,18 @@ $('confirmImport').onclick = async () => {
     else data.importRules.unshift({ id: crypto.randomUUID(), keyword, source: entry.source, category: entry.category });
   }
   if (data.importRules.length > 1000) { data.entries = before; data.importRules = rulesBefore; return toast('商户分类规则已达到上限'); }
+  const historyBefore = structuredClone(data.entryHistory);
+  const oldById = new Map(before.map(entry => [String(entry.id), entry]));
+  for (const entry of replacement) {
+    const old = oldById.get(String(entry.id));
+    if (!old) rememberEntry('导入', null, entry);
+    else if (old !== entry) rememberEntry('关联导入', old, entry);
+  }
   try { await save(); }
   catch {
     data.entries = before;
     data.importRules = rulesBefore;
+    data.entryHistory = historyBefore;
     toast('导入保存失败，请缩小账单时间范围');
     return;
   }
@@ -1095,7 +1291,7 @@ $('restoreBackup').onclick = async () => {
         committed = true;
         data = replacement;
         normalizeData();
-        refreshCategoryUI(); refreshAccountUI(); render(); close('backupModal'); toast('账本已恢复');
+        refreshCategoryUI(); refreshAccountUI(); refreshProjectUI(); render(); close('backupModal'); toast('账本已恢复');
         syncReminders().catch(() => toast('账本已恢复，但系统提醒未更新'));
         scheduleAutoBackup();
         pendingRestore = null;
@@ -1112,6 +1308,61 @@ function renderTrash() {
   const deleted = data.entries.filter(entry => entry.deletedAt).sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)));
   $('trashList').innerHTML = deleted.map(entry => `<div class="trash-row"><div class="trash-row-main"><b>${escapeHtml(entry.note || entry.category || '未命名账目')}</b><small>${escapeHtml(entry.date)} · ${money(entry.amount)} · 删除于 ${escapeHtml(String(entry.deletedAt).slice(0, 10))}</small></div><button data-trash-restore="${escapeHtml(entry.id)}">恢复</button><button data-trash-purge="${escapeHtml(entry.id)}">永久删除</button></div>`).join('') || '<div class="empty">没有已删除账目</div>';
 }
+function historySnapshot(entry) {
+  if (!entry) return null;
+  const snapshot = structuredClone(entry);
+  delete snapshot.photoId;
+  return snapshot;
+}
+function rememberEntry(action, before, after) {
+  data.entryHistory.unshift({ id: crypto.randomUUID(), recordId: String(after?.id ?? before.id), action, before: historySnapshot(before), after: historySnapshot(after), time: new Date().toISOString(), undone: false });
+  data.entryHistory.length = Math.min(data.entryHistory.length, 100);
+}
+function renderHistory() {
+  $('historyList').innerHTML = data.entryHistory.map(item => {
+    const latest = data.entryHistory.find(other => String(other.recordId) === String(item.recordId) && !other.undone);
+    const entry = data.entries.find(record => String(record.id) === String(item.recordId));
+    const canUndo = !item.undone && latest === item && entry && !entry.receivableId;
+    const state = item.after || item.before;
+    return `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(item.action)} · ${escapeHtml(state?.note || state?.category || '未命名账目')}</b><small>${escapeHtml(String(item.time).replace('T', ' ').slice(0, 16))} · ${escapeHtml(state?.date || '')} · ${money(state?.amount || 0)}${item.undone ? ' · 已撤销' : ''}</small></div>${canUndo ? `<button data-history-undo="${escapeHtml(item.id)}">撤销</button>` : ''}</div>`;
+  }).join('') || '<div class="empty">还没有账目变更记录</div>';
+}
+$('openHistory').onclick = () => { renderHistory(); open('historyModal'); };
+$('historyList').onclick = async event => {
+  const button = event.target.closest('[data-history-undo]');
+  if (!button) return;
+  const item = data.entryHistory.find(record => record.id === button.dataset.historyUndo && !record.undone);
+  if (!item || data.entryHistory.find(record => String(record.recordId) === String(item.recordId) && !record.undone) !== item) return toast('请先撤销这笔账目的最近一次操作');
+  const index = data.entries.findIndex(record => String(record.id) === String(item.recordId));
+  if (index < 0 || data.entries[index].receivableId) return toast('关联借款请在借还款页面处理');
+  const current = data.entries[index];
+  if (JSON.stringify(historySnapshot(current)) !== JSON.stringify(item.after)) return toast('账目已被其他操作改变，无法撤销');
+  const previous = structuredClone(current);
+  const acknowledgement = current.recurringKey ? data.recurringAcknowledged[current.recurringKey] : undefined;
+  if (item.before === null) {
+    if (data.entries.some(record => record.type === 'refund' && !record.deletedAt && String(record.refundOf) === String(current.id))) return toast('已有关联退款，请先处理退款');
+    current.deletedAt = new Date().toISOString();
+    if (current.recurringKey) delete data.recurringAcknowledged[current.recurringKey];
+  } else {
+    const restored = { ...structuredClone(item.before), photoId: current.photoId };
+    if (restored.type === 'refund') {
+      const original = data.entries.find(record => String(record.id) === String(restored.refundOf) && record.type === 'expense' && !record.deletedAt);
+      if (!original || Math.round(restored.amount * 100) > Math.round(JianjiFeatures.refundAvailable(original, restored.category, data.entries, current.id) * 100)) return toast('原支出或可退金额已变化，无法撤销');
+    }
+    if (restored.type === 'expense') {
+      const parts = JianjiFeatures.expenseParts(restored);
+      for (const category of new Set(data.entries.filter(record => record.type === 'refund' && !record.deletedAt && String(record.refundOf) === String(restored.id)).map(record => record.category))) {
+        const allowed = parts.find(part => part.category === category)?.amount || 0;
+        const refunded = data.entries.filter(record => record.type === 'refund' && !record.deletedAt && String(record.refundOf) === String(restored.id) && record.category === category).reduce((sum, record) => sum + Number(record.amount), 0);
+        if (Math.round(refunded * 100) > Math.round(allowed * 100)) return toast('关联退款已变化，无法撤销');
+      }
+    }
+    data.entries[index] = restored;
+  }
+  item.undone = true;
+  try { await save(); } catch { data.entries[index] = previous; if (previous.recurringKey && acknowledgement !== undefined) data.recurringAcknowledged[previous.recurringKey] = acknowledgement; item.undone = false; return toast('撤销保存失败'); }
+  renderHistory(); render(); renderTrash(); toast('已撤销这次账目操作');
+};
 $('openTrash').onclick = () => { renderTrash(); open('trashModal'); };
 $('trashList').onclick = async event => {
   const restore = event.target.closest('[data-trash-restore]');
@@ -1125,16 +1376,22 @@ $('trashList').onclick = async event => {
       const original = data.entries.find(item => String(item.id) === String(entry.refundOf) && item.type === 'expense' && !item.deletedAt);
       if (!original || Math.round(entry.amount * 100) > Math.round(JianjiFeatures.refundAvailable(original, entry.category, data.entries, entry.id) * 100)) return toast('原支出不存在或可退金额不足，无法恢复');
     }
+    if (entry.receivableId) return toast('借还款记录请在借还款页面处理');
+    const beforeEntry = structuredClone(entry);
     const old = entry.deletedAt;
     delete entry.deletedAt;
-    try { await save(); } catch { entry.deletedAt = old; return toast('恢复失败，请检查存储空间'); }
+    rememberEntry('恢复', beforeEntry, entry);
+    try { await save(); } catch { entry.deletedAt = old; data.entryHistory.shift(); return toast('恢复失败，请检查存储空间'); }
     toast('账目已恢复');
   } else {
+    if (entry.receivableId) return toast('借还款记录不能单独永久删除');
     if (entry.type === 'expense' && data.entries.some(item => item.type === 'refund' && String(item.refundOf) === String(entry.id))) return toast('请先永久删除关联退款');
     if (!confirm('永久删除后无法从最近删除恢复，确定继续吗？')) return;
     const old = data.entries;
     data.entries = old.filter(item => item !== entry);
-    try { await save(); } catch { data.entries = old; return toast('删除失败，请检查存储空间'); }
+    const oldHistory = data.entryHistory;
+    data.entryHistory = oldHistory.filter(item => String(item.recordId) !== String(entry.id));
+    try { await save(); } catch { data.entries = old; data.entryHistory = oldHistory; return toast('删除失败，请检查存储空间'); }
     if (entry.photoId && !data.entries.some(item => item.photoId === entry.photoId)) photoStore('delete', entry.photoId).catch(() => {});
     toast('已永久删除');
   }
@@ -1148,7 +1405,7 @@ $('entryForm').onsubmit = async e => {
   if (!Number.isFinite(amount) || amount <= 0) return;
   const original = editingId === null ? null : data.entries.find(item => String(item.id) === editingId);
   if (editingId !== null && !original) return toast('记录不存在，请重新打开');
-  const entry = { ...original, id: original?.id ?? Date.now() + Math.random(), type: entryType, amount, date: $('entryDate').value, category: entryType === 'expense' ? $('entryCategory').value : '', note: $('entryNote').value.trim(), merchant: entryType === 'expense' ? $('entryMerchant').value.trim() : '', accountId: $('entryAccount').value || '' };
+  const entry = { ...original, id: original?.id ?? Date.now() + Math.random(), type: entryType, amount, date: $('entryDate').value, category: entryType === 'expense' ? $('entryCategory').value : '', note: $('entryNote').value.trim(), merchant: entryType === 'expense' ? $('entryMerchant').value.trim() : '', accountId: $('entryAccount').value || '', projectIds: selectedProjectIds() };
   if (entryType === 'expense' && $('rememberMerchant').checked && !entry.merchant) return toast('请先填写商户名称，再记住分类');
   if (entryType === 'expense' && $('splitEnabled').checked) {
     const parts = splitRows();
@@ -1180,6 +1437,7 @@ $('entryForm').onsubmit = async e => {
   }
   const index = original ? data.entries.indexOf(original) : -1;
   const previousRules = structuredClone(data.importRules);
+  let historyAdded = false;
   try {
     if (index >= 0) data.entries[index] = entry;
     else data.entries.push(entry);
@@ -1189,12 +1447,15 @@ $('entryForm').onsubmit = async e => {
       else if (data.importRules.length < 1000) data.importRules.unshift({ id: crypto.randomUUID(), keyword: entry.merchant, source: '', category: entry.category });
       else throw new Error('商户分类规则已达到上限');
     }
+    rememberEntry(original ? '编辑' : '新增', original, entry);
+    historyAdded = true;
     await save();
   }
   catch {
     if (index >= 0) data.entries[index] = original;
     else data.entries.pop();
     data.importRules = previousRules;
+    if (historyAdded) data.entryHistory.shift();
     if (selectedImage) photoStore('delete', entry.photoId).catch(() => {});
     toast('记录保存失败，请检查浏览器存储空间');
     return;
@@ -1253,10 +1514,11 @@ $('refundForm').onsubmit = async event => {
   const category = $('refundCategory').value;
   if (!Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) > Math.round(JianjiFeatures.refundAvailable(original, category, data.entries, editingRefundId) * 100)) return toast('退款金额超过此类别的剩余可退金额');
   const previous = editingRefundId ? data.entries.find(item => String(item.id) === editingRefundId && item.type === 'refund') : null;
-  const entry = { ...previous, id: previous?.id ?? Date.now() + Math.random(), type: 'refund', refundOf: original.id, amount, date: $('refundDate').value, category, accountId: $('refundAccount').value, note: $('refundNote').value.trim(), source: original.source || '' };
+  const entry = { ...previous, id: previous?.id ?? Date.now() + Math.random(), type: 'refund', refundOf: original.id, amount, date: $('refundDate').value, category, accountId: $('refundAccount').value, note: $('refundNote').value.trim(), source: original.source || '', projectIds: original.projectIds || [] };
   const index = previous ? data.entries.indexOf(previous) : -1;
   if (index >= 0) data.entries[index] = entry; else data.entries.push(entry);
-  try { await save(); } catch { if (index >= 0) data.entries[index] = previous; else data.entries.pop(); return toast('退款保存失败'); }
+  rememberEntry(previous ? '编辑退款' : '新增退款', previous, entry);
+  try { await save(); } catch { if (index >= 0) data.entries[index] = previous; else data.entries.pop(); data.entryHistory.shift(); return toast('退款保存失败'); }
   close('refundModal'); render(); toast(previous ? '退款已更新' : '退款已记录');
 };
 async function handleRecordClick(e) {
@@ -1273,6 +1535,7 @@ async function handleRecordClick(e) {
   if (editButton) {
     const entry = data.entries.find(item => String(item.id) === editButton.dataset.edit);
     if (!entry) return;
+    if (entry.receivableId) { $('manageReceivables').click(); return toast('借还款记录请在这里管理'); }
     if (entry.type === 'refund') {
       const original = data.entries.find(item => String(item.id) === String(entry.refundOf) && !item.deletedAt);
       if (!original) return toast('原支出已不存在');
@@ -1306,6 +1569,7 @@ async function handleRecordClick(e) {
     updateSplitUI();
     $('entryAccount').value = entry.accountId || '';
     $('entryNote').value = entry.note || '';
+    setSelectedProjects(entry.projectIds || []);
     $('entryMerchant').value = entry.merchant || '';
     $('rememberMerchant').checked = false;
     updateMerchantRuleSuggestion();
@@ -1316,12 +1580,16 @@ async function handleRecordClick(e) {
     return;
   }
   const button = e.target.closest('[data-delete]');
-  if (!button || !confirm('确定删除这笔记录吗？')) return;
+  if (!button) return;
   const entry = data.entries.find(item => String(item.id) === button.dataset.delete && !item.deletedAt);
   if (!entry) return;
+  if (entry.receivableId) { $('manageReceivables').click(); return toast('借还款记录请在这里管理'); }
+  if (!confirm('确定删除这笔记录吗？')) return;
   if (entry.type === 'expense' && data.entries.some(item => item.type === 'refund' && String(item.refundOf) === String(entry.id))) return toast('请先永久删除关联退款，再删除原支出');
+  const beforeEntry = structuredClone(entry);
   entry.deletedAt = new Date().toISOString();
-  try { await save(); } catch { delete entry.deletedAt; return toast('删除失败，请检查存储空间'); }
+  rememberEntry('删除', beforeEntry, entry);
+  try { await save(); } catch { delete entry.deletedAt; data.entryHistory.shift(); return toast('删除失败，请检查存储空间'); }
   render(); toast('已移到最近删除，可在账本设置中恢复');
 }
 document.querySelectorAll('.record-list').forEach(container => container.onclick = handleRecordClick);
@@ -1406,6 +1674,7 @@ async function loadLedger() {
     ledgerLoaded = true;
     refreshCategoryUI();
     refreshAccountUI();
+    refreshProjectUI();
     render();
     switchPage(location.hash.slice(1), false);
     refreshPaymentNotices();

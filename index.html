@@ -49,6 +49,20 @@
         <div class="cardhead"><h2>待确认的周期账目</h2><button class="link" id="manageRecurring">管理周期记账</button></div>
         <div id="recurringDue"></div>
       </section>
+      <section class="card planning-card">
+        <div class="cardhead"><h2>现金流日历</h2><button class="link" id="manageCashFlow">计划收支</button></div>
+        <label class="field">预测账户<select id="cashFlowAccount"></select></label>
+        <p id="cashFlowSummary" class="import-help"></p>
+        <div id="cashFlowDays" class="cash-flow-days"></div>
+      </section>
+      <section class="card planning-card">
+        <div class="cardhead"><h2>项目标签</h2><button class="link" id="manageProjects">管理项目</button></div>
+        <div id="projectSummary"></div>
+      </section>
+      <section class="card planning-card">
+        <div class="cardhead"><h2>借出与待收款</h2><button class="link" id="manageReceivables">管理待收款</button></div>
+        <div id="receivableSummary"></div>
+      </section>
       <section class="card planning-card" id="paymentCard" hidden>
         <div class="cardhead"><h2>支付通知待确认</h2><button class="link" id="paymentSettings">开启通知读取</button></div>
         <p class="import-help" id="paymentStatus">开启后，简记会在本机识别微信和支付宝的支付通知，确认后才会入账。</p>
@@ -68,7 +82,7 @@
       </section>
       <section class="card tools-card">
         <div class="cardhead"><h2>账本设置</h2></div>
-        <div class="tool-buttons"><button id="manageAccounts">账户与对账</button><button id="manageCategories">管理分类</button><button id="manageImportRules">商户分类规则</button><button id="openBackup">备份与恢复</button><button id="appLockSetting" hidden>开启应用锁</button><button id="openTrash">最近删除</button></div>
+        <div class="tool-buttons"><button id="manageAccounts">账户与对账</button><button id="manageCategories">管理分类</button><button id="manageImportRules">商户分类规则</button><button id="openHistory">修改历史</button><button id="openBackup">备份与恢复</button><button id="appLockSetting" hidden>开启应用锁</button><button id="openTrash">最近删除</button></div>
         <label class="all-months"><input id="missingCheckEnabled" type="checkbox" checked> 超过 3 天没有新账目时提示检查</label>
         <div id="backupReminder" class="backup-reminder" hidden></div>
       </section>
@@ -88,6 +102,7 @@
         <input id="recordSearch" type="search" placeholder="搜索备注、商户" aria-label="搜索记录">
         <select id="recordCategory" aria-label="按类别筛选"><option value="">全部类别</option></select>
         <select id="recordSource" aria-label="按来源筛选"><option value="">全部来源</option><option value="manual">手动记录</option><option value="微信">微信</option><option value="支付宝">支付宝</option></select>
+        <select id="recordProject" aria-label="按项目标签筛选"><option value="">全部项目</option></select>
       </div>
       <label class="all-months"><input id="allMonths" type="checkbox"> 搜索所有月份</label>
       <section class="card detail-card"><div class="record-list" id="records"></div></section>
@@ -125,6 +140,7 @@
       <div id="splitField" hidden><label class="all-months"><input type="checkbox" id="splitEnabled"> 这笔支出分到多个类别</label><div id="splitRows"></div><button type="button" class="quiet-button" id="addSplit" hidden>添加类别</button><p class="import-help" id="splitRemaining" hidden></p></div>
       <label class="field">账户<select id="entryAccount"></select></label>
       <label class="field">备注<input id="entryNote" maxlength="60" placeholder="例如：午餐"></label>
+      <fieldset class="project-field"><legend>项目标签（选填）</legend><div id="entryProjectChoices"></div></fieldset>
       <label class="field" id="merchantField">商户（选填）<input id="entryMerchant" maxlength="40" placeholder="例如：常去的咖啡店"></label>
       <label class="all-months" id="rememberMerchantField"><input id="rememberMerchant" type="checkbox"> 记住该商户的支出分类</label>
       <div id="merchantRuleSuggestion" class="import-help" hidden><span id="merchantRuleText"></span><button type="button" class="quiet-button" id="applyMerchantRule">采用建议</button></div>
@@ -200,9 +216,35 @@
       <label class="field" id="recurringCategoryField">类别<select id="recurringCategory"></select></label>
       <label class="field">备注<input id="recurringNote" maxlength="60" required placeholder="例如：房租"></label>
       <label class="field">周期<select id="recurringFrequency"><option value="monthly">每月</option><option value="weekly">每周</option></select></label>
+      <label class="field">预计使用账户<select id="recurringAccount"></select></label>
       <label class="field">首次日期<input id="recurringStart" type="date" required></label>
       <button class="primary" id="saveRecurringRule">添加周期账目</button><button type="button" class="quiet-button" id="cancelRecurringEdit" hidden>取消编辑</button>
     </form>
+  </div></div>
+  <div class="modalback" id="cashFlowModal"><div class="modal">
+    <div class="modalhead"><h2>一次性计划收支</h2><button class="close" data-close="cashFlowModal" aria-label="关闭">×</button></div>
+    <p class="import-help">计划只用于现金流预测，不会自动入账。固定账目直接使用已有的“周期记账”。</p>
+    <div id="cashFlowPlanList" class="settings-list"></div>
+    <form id="cashFlowPlanForm"><label class="field">事项<input id="cashPlanNote" maxlength="40" required placeholder="例如：下月工资"></label><label class="field">类型<select id="cashPlanType"><option value="income">预计收入</option><option value="expense">预计支出</option></select></label><label class="field">金额<input id="cashPlanAmount" type="number" min="0.01" step="0.01" required></label><label class="field">日期<input id="cashPlanDate" type="date" required></label><label class="field">账户<select id="cashPlanAccount"></select></label><button class="primary">添加计划</button><button type="button" id="cancelCashPlanEdit" class="quiet-button" hidden>取消编辑</button></form>
+  </div></div>
+  <div class="modalback" id="projectModal"><div class="modal">
+    <div class="modalhead"><h2>项目标签</h2><button class="close" data-close="projectModal" aria-label="关闭">×</button></div>
+    <p class="import-help">一笔账目可加入多个项目。项目统计按支出减退款计算，跨类别汇总。</p>
+    <div id="projectList" class="settings-list"></div>
+    <form id="projectForm"><label class="field">项目名称<input id="projectName" maxlength="24" required placeholder="例如：旅行、装修"></label><button class="primary">添加项目</button><button type="button" id="cancelProjectEdit" class="quiet-button" hidden>取消编辑</button></form>
+  </div></div>
+  <div class="modalback" id="receivableModal"><div class="modal">
+    <div class="modalhead"><h2>借出与待收款</h2><button class="close" data-close="receivableModal" aria-label="关闭">×</button></div>
+    <p class="import-help">借出与收回会改变所选账户余额，不计入收入或支出。账户可留空，但余额预测将无法分配到具体账户。</p>
+    <div id="receivableList" class="settings-list"></div>
+    <form id="receivableForm"><label class="field">借款人<input id="loanPerson" maxlength="30" required placeholder="例如：小王"></label><label class="field">借出金额<input id="loanAmount" type="number" min="0.01" step="0.01" required></label><label class="field">借出日期<input id="loanDate" type="date" required></label><label class="field">约定收回日期<input id="loanDue" type="date" required></label><label class="field">借出账户<select id="loanAccount"></select></label><label class="field">备注<input id="loanNote" maxlength="60"></label><button class="primary">记录借出</button><button type="button" id="cancelLoanEdit" class="quiet-button" hidden>取消编辑</button></form>
+    <div class="backup-divider">记录收款</div>
+    <form id="repaymentForm"><label class="field">对应借款<select id="repaymentLoan" required></select></label><label class="field">收回金额<input id="repaymentAmount" type="number" min="0.01" step="0.01" required></label><label class="field">收款日期<input id="repaymentDate" type="date" required></label><label class="field">收款账户<select id="repaymentAccount"></select></label><button class="primary">记录收款</button></form>
+  </div></div>
+  <div class="modalback" id="historyModal"><div class="modal">
+    <div class="modalhead"><h2>账目修改历史</h2><button class="close" data-close="historyModal" aria-label="关闭">×</button></div>
+    <p class="import-help">保留最近 100 次账目变更。可撤销某笔账目的最近一次操作；历史不保存旧图片，撤销时会保留当前图片。</p>
+    <div id="historyList" class="settings-list"></div>
   </div></div>
   <div class="modalback" id="backupModal"><div class="modal">
     <div class="modalhead"><h2>备份与恢复</h2><button class="close" data-close="backupModal" aria-label="关闭">×</button></div>

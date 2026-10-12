@@ -41,8 +41,65 @@
       if (entry.transferFrom === account.id) return balance - amount;
       if (entry.transferTo === account.id) return balance + amount;
       if (entry.accountId !== account.id) return balance;
+      if (entry.type === 'excluded' && Number.isFinite(Number(entry.accountDelta))) return balance + Number(entry.accountDelta);
       return balance + (entry.type === 'income' || entry.type === 'refund' ? amount : entry.type === 'expense' ? -amount : 0);
     }, (Number(account.openingBalance) || 0) + (account.reconciliations || []).reduce((sum, item) => sum + (Number(item.delta) || 0), 0));
+  }
+  function accountBalanceAsOf(account, entries, date) {
+    return accountBalance({ ...account, reconciliations: (account.reconciliations || []).filter(item => item.date <= date) }, entries.filter(entry => entry.date <= date));
+  }
+  function projectNet(projectId, entries) {
+    return entries.filter(entry => !entry.deletedAt && (entry.projectIds || []).includes(projectId)).reduce((sum, entry) => sum + (entry.type === 'expense' ? Number(entry.amount) : entry.type === 'refund' ? -Number(entry.amount) : 0), 0);
+  }
+  function receivableOutstanding(loan, entries) {
+    const paid = entries.filter(entry => !entry.deletedAt && entry.receivableId === loan.id && entry.receivableKind === 'repayment')
+      .reduce((sum, entry) => sum + cents(entry.amount), 0);
+    return Math.max(0, (cents(loan.amount) - paid) / 100);
+  }
+  function cashFlowForecast(ledger, today = new Date(), accountId = '') {
+    const todayText = dateText(today);
+    const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 30);
+    const selectedAccounts = accountId ? (ledger.accounts || []).filter(account => account.id === accountId) : ledger.accounts || [];
+    const startBalance = selectedAccounts.length ? selectedAccounts.reduce((sum, account) => sum + accountBalanceAsOf(account, ledger.entries || [], todayText), 0) : null;
+    const events = [];
+    for (const entry of ledger.entries || []) {
+      if (entry.deletedAt || entry.date <= todayText || entry.date > dateText(end)) continue;
+      let delta = entry.type === 'income' || entry.type === 'refund' ? Number(entry.amount) : entry.type === 'expense' ? -Number(entry.amount) : Number(entry.accountDelta) || 0;
+      if (entry.transferFrom && entry.transferTo) delta = accountId ? (entry.transferFrom === accountId ? -Number(entry.amount) : entry.transferTo === accountId ? Number(entry.amount) : 0) : 0;
+      else if (accountId && entry.accountId !== accountId) delta = 0;
+      else if (!accountId && selectedAccounts.length && !selectedAccounts.some(account => account.id === entry.accountId)) delta = 0;
+      if (delta) events.push({ date: entry.date, label: entry.note || '已记账', delta, kind: 'recorded' });
+    }
+    for (const plan of ledger.cashFlowPlans || []) {
+      if (plan.done || plan.date <= todayText || plan.date > dateText(end) || accountId && plan.accountId !== accountId || !accountId && selectedAccounts.length && !selectedAccounts.some(account => account.id === plan.accountId)) continue;
+      events.push({ date: plan.date, label: plan.note || '计划收支', delta: plan.type === 'income' ? Number(plan.amount) : -Number(plan.amount), kind: 'plan' });
+    }
+    for (const rule of ledger.recurring || []) {
+      if (rule.active === false || !/^\d{4}-\d{2}-\d{2}$/.test(rule.startDate || '') || accountId && rule.accountId !== accountId || !accountId && selectedAccounts.length && !selectedAccounts.some(account => account.id === rule.accountId)) continue;
+      const [year, month, day] = rule.startDate.split('-').map(Number);
+      const first = new Date(year, month - 1, day);
+      if (rule.frequency === 'weekly') {
+        for (let due = new Date(first); due <= end; due.setDate(due.getDate() + 7)) {
+          const date = dateText(due);
+          if (date > todayText && !ledger.recurringAcknowledged?.[`${rule.id}|${date}`]) events.push({ date, label: rule.note || '周期账目', delta: rule.type === 'income' ? Number(rule.amount) : -Number(rule.amount), kind: 'recurring' });
+        }
+      } else {
+        for (let offset = 0; offset <= (end.getFullYear() - year) * 12 + end.getMonth() - (month - 1); offset++) {
+          const due = new Date(year, month - 1 + offset, Math.min(day, new Date(year, month + offset, 0).getDate()));
+          const date = dateText(due);
+          if (date > todayText && !ledger.recurringAcknowledged?.[`${rule.id}|${date}`]) events.push({ date, label: rule.note || '周期账目', delta: rule.type === 'income' ? Number(rule.amount) : -Number(rule.amount), kind: 'recurring' });
+        }
+      }
+    }
+    let running = startBalance ?? 0;
+    const days = [];
+    for (let date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1); date <= end; date.setDate(date.getDate() + 1)) {
+      const day = dateText(date);
+      const items = events.filter(event => event.date === day);
+      running += items.reduce((sum, item) => sum + item.delta, 0);
+      days.push({ date: day, events: items, balance: running });
+    }
+    return { startBalance, days };
   }
   function reconcileDifference(account, entries, actual) {
     if (!Number.isFinite(Number(actual))) throw new Error('实际余额无效');
@@ -100,7 +157,7 @@
     }
     return result.sort((a, b) => a.date.localeCompare(b.date));
   }
-  const api = { possibleDuplicates, recurringOccurrences, accountBalance, reconcileDifference, annualPlanProgress, daysWithoutEntry, classifyImport, expenseParts, categoryNet, netExpense, validSplits, refundAvailable };
+  const api = { possibleDuplicates, recurringOccurrences, accountBalance, accountBalanceAsOf, projectNet, receivableOutstanding, cashFlowForecast, reconcileDifference, annualPlanProgress, daysWithoutEntry, classifyImport, expenseParts, categoryNet, netExpense, validSplits, refundAvailable };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.JianjiFeatures = api;
 })(typeof window !== 'undefined' ? window : globalThis);
