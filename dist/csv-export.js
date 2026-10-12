@@ -3,7 +3,7 @@
   const quote = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
   function toCsv(data) {
     const accounts = new Map((data.accounts || []).map(account => [account.id, account.name]));
-    const rows = [['日期', '类型', '金额', '类别', '账户', '备注', '来源', '关联原支出ID', '记录ID']];
+    const rows = [['日期', '类型', '金额', '类别', '账户', '备注', '商户', '来源', '关联原支出ID', '记录ID']];
     for (const entry of data.entries || []) {
       if (entry.deletedAt) continue;
       const type = entry.type === 'expense' ? '支出' : entry.type === 'income' ? '收入' : entry.type === 'refund' ? '退款' : entry.transferFrom ? '转账' : '不计收支';
@@ -11,7 +11,7 @@
       for (const part of parts) rows.push([
         entry.date || '', type, Number(part.amount).toFixed(2), part.category || '',
         entry.transferFrom ? `${accounts.get(entry.transferFrom) || ''} → ${accounts.get(entry.transferTo) || ''}` : accounts.get(entry.accountId) || '',
-        entry.note || '', entry.source || '', entry.refundOf ?? '', entry.id ?? ''
+        entry.note || '', entry.merchant || '', entry.source || '', entry.refundOf ?? '', entry.id ?? ''
       ]);
     }
     return '\ufeff' + rows.map(row => row.map(quote).join(',')).join('\r\n') + '\r\n';

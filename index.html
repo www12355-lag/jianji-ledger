@@ -31,6 +31,8 @@
       <section class="quick-card" aria-label="分类速记">
         <div class="cardhead"><div><h2>分类速记</h2><p>选择类别，快速记一笔</p></div></div>
         <div class="category-shortcuts" id="categoryShortcuts"></div>
+        <div class="cardhead template-head"><h2>常用模板</h2><button class="link" id="manageTemplates">管理模板</button></div>
+        <div id="templateShortcuts" class="template-shortcuts"></div>
       </section>
       <div class="home-grid">
         <section class="card">
@@ -52,13 +54,22 @@
         <p class="import-help" id="paymentStatus">开启后，简记会在本机识别微信和支付宝的支付通知，确认后才会入账。</p>
         <div id="paymentNotices" class="settings-list"></div>
       </section>
+      <section class="card planning-card" id="missingCheckCard" hidden>
+        <div class="cardhead"><h2>漏记检查</h2><button class="link" id="dismissMissingCheck">本周不提醒</button></div>
+        <p id="missingCheckText" class="import-help"></p>
+      </section>
+      <section class="card planning-card">
+        <div class="cardhead"><h2>年度支出计划</h2><button class="link" id="manageAnnualPlans">管理计划</button></div>
+        <div id="annualPlanSummary"></div>
+      </section>
       <section class="card planning-card" id="budgetAlertCard" hidden>
         <div class="cardhead"><h2>预算提醒</h2></div>
         <div id="budgetAlerts"></div>
       </section>
       <section class="card tools-card">
         <div class="cardhead"><h2>账本设置</h2></div>
-        <div class="tool-buttons"><button id="manageAccounts">账户与转账</button><button id="manageCategories">管理分类</button><button id="manageImportRules">导入分类规则</button><button id="openBackup">备份与恢复</button><button id="appLockSetting" hidden>开启应用锁</button><button id="openTrash">最近删除</button></div>
+        <div class="tool-buttons"><button id="manageAccounts">账户与对账</button><button id="manageCategories">管理分类</button><button id="manageImportRules">商户分类规则</button><button id="openBackup">备份与恢复</button><button id="appLockSetting" hidden>开启应用锁</button><button id="openTrash">最近删除</button></div>
+        <label class="all-months"><input id="missingCheckEnabled" type="checkbox" checked> 超过 3 天没有新账目时提示检查</label>
         <div id="backupReminder" class="backup-reminder" hidden></div>
       </section>
       <p class="foot">账本默认保存在本机，可在“备份与恢复”中迁移 · 金额单位：人民币</p>
@@ -114,6 +125,9 @@
       <div id="splitField" hidden><label class="all-months"><input type="checkbox" id="splitEnabled"> 这笔支出分到多个类别</label><div id="splitRows"></div><button type="button" class="quiet-button" id="addSplit" hidden>添加类别</button><p class="import-help" id="splitRemaining" hidden></p></div>
       <label class="field">账户<select id="entryAccount"></select></label>
       <label class="field">备注<input id="entryNote" maxlength="60" placeholder="例如：午餐"></label>
+      <label class="field" id="merchantField">商户（选填）<input id="entryMerchant" maxlength="40" placeholder="例如：常去的咖啡店"></label>
+      <label class="all-months" id="rememberMerchantField"><input id="rememberMerchant" type="checkbox"> 记住该商户的支出分类</label>
+      <div id="merchantRuleSuggestion" class="import-help" hidden><span id="merchantRuleText"></span><button type="button" class="quiet-button" id="applyMerchantRule">采用建议</button></div>
       <div class="photo-field"><div class="photo-label">图片（选填）</div><div class="photo-actions"><button type="button" id="cameraButton">📷 拍照</button><button type="button" id="imageButton">▧ 选择图片或截图</button></div><input id="cameraInput" type="file" accept="image/*" capture="environment" hidden><input id="imageInput" type="file" accept="image/*" hidden><div class="photo-selection"><img id="photoPreview" alt="所选图片预览" hidden><span id="photoName">可拍摄物品，也可选择相册里的网购截图</span><button type="button" id="removePhoto" aria-label="移除图片">×</button></div><button type="button" class="quiet-button" id="recognizeImage" hidden>识别截图并预填</button><p class="import-help" id="ocrStatus" aria-live="polite"></p><label id="removeStoredPhotoField" class="all-months" hidden><input id="removeStoredPhoto" type="checkbox"> 删除原图片</label></div>
       <button class="primary">保存记录</button>
     </form>
@@ -150,14 +164,30 @@
     <p class="import-help">账户是本机记账标签，不会连接微信、支付宝或银行。旧账目可在编辑时选择账户；转账只改变账户余额，不计入收支。</p>
     <div id="accountList" class="settings-list"></div>
     <form id="accountForm"><label class="field">账户名称<input id="accountName" maxlength="20" placeholder="例如：现金、银行卡、微信" required></label><label class="field">期初余额<input id="accountOpening" type="number" step="0.01" value="0" required></label><button class="primary">添加账户</button></form>
+    <div class="backup-divider">核对实际余额</div>
+    <p class="import-help">输入账户当前实际余额。若有差额，先检查漏记账目；确认后可将差额记为余额校正，不计入收支。</p>
+    <form id="reconcileForm"><label class="field">账户<select id="reconcileAccount" required></select></label><label class="field">实际余额<input id="reconcileActual" type="number" step="0.01" required></label><p id="reconcileResult" class="import-help" aria-live="polite"></p><button class="primary" id="reconcileSave">核对余额</button></form>
+    <div id="reconcileHistory" class="settings-list"></div>
     <div class="backup-divider">账户间转账</div>
     <form id="transferForm"><label class="field">转出账户<select id="transferFrom" required></select></label><label class="field">转入账户<select id="transferTo" required></select></label><label class="field">金额<input id="transferAmount" type="number" min="0.01" step="0.01" required></label><label class="field">日期<input id="transferDate" type="date" required></label><label class="field">备注<input id="transferNote" maxlength="60" placeholder="例如：转入零钱"></label><button class="primary">记录转账</button></form>
   </div></div>
   <div class="modalback" id="importRulesModal"><div class="modal">
-    <div class="modalhead"><h2>导入分类规则</h2><button class="close" data-close="importRulesModal" aria-label="关闭">×</button></div>
-    <p class="import-help">账单导入时按顺序匹配商户或备注关键词；只影响新导入的支出，可在导入预览中修改分类。</p>
+    <div class="modalhead"><h2>商户分类规则</h2><button class="close" data-close="importRulesModal" aria-label="关闭">×</button></div>
+    <p class="import-help">记账和导入时按商户或备注关键词建议类别；只影响新记录，仍可逐笔修改。</p>
     <div id="importRuleList" class="settings-list"></div>
-    <form id="importRuleForm"><label class="field">关键词<input id="ruleKeyword" maxlength="40" required placeholder="例如：地铁"></label><label class="field">账单来源<select id="ruleSource"><option value="">微信和支付宝</option><option value="微信">微信</option><option value="支付宝">支付宝</option></select></label><label class="field">归入类别<select id="ruleCategory"></select></label><button class="primary">添加规则</button></form>
+    <form id="importRuleForm"><label class="field">关键词<input id="ruleKeyword" maxlength="40" required placeholder="例如：地铁"></label><label class="field">账单来源<select id="ruleSource"><option value="">全部来源</option><option value="微信">微信</option><option value="支付宝">支付宝</option></select></label><label class="field">归入类别<select id="ruleCategory"></select></label><button class="primary">添加规则</button></form>
+  </div></div>
+  <div class="modalback" id="templateModal"><div class="modal">
+    <div class="modalhead"><h2>常用速记模板</h2><button class="close" data-close="templateModal" aria-label="关闭">×</button></div>
+    <p class="import-help">点首页模板会预填记账表单，核对后保存才会入账。</p>
+    <div id="templateList" class="settings-list"></div>
+    <form id="templateForm"><label class="field">模板名称<input id="templateName" maxlength="20" required placeholder="例如：工作日午餐"></label><label class="field">收支类型<select id="templateType"><option value="expense">支出</option><option value="income">收入</option></select></label><label class="field">金额<input id="templateAmount" type="number" min="0.01" step="0.01" required></label><label class="field">类别<select id="templateCategory"></select></label><label class="field">账户<select id="templateAccount"></select></label><label class="field">备注<input id="templateNote" maxlength="60"></label><button class="primary">添加模板</button></form>
+  </div></div>
+  <div class="modalback" id="annualPlanModal"><div class="modal">
+    <div class="modalhead"><h2>年度支出计划</h2><button class="close" data-close="annualPlanModal" aria-label="关闭">×</button></div>
+    <p class="import-help">适合年费、保险、旅行等支出。预留金额只用于计划展示，不会从账户扣款；关联类别的实际支出会单独显示。</p>
+    <div id="annualPlanList" class="settings-list"></div>
+    <form id="annualPlanForm"><label class="field">计划名称<input id="annualPlanName" maxlength="24" required placeholder="例如：年度保险"></label><label class="field">年度<input id="annualPlanYear" type="number" min="2000" max="2100" required></label><label class="field">目标金额<input id="annualPlanTarget" type="number" min="0.01" step="0.01" required></label><label class="field">预计支出月份<select id="annualPlanMonth"></select></label><label class="field">关联支出类别<select id="annualPlanCategory"></select></label><button class="primary">添加计划</button><button type="button" class="quiet-button" id="cancelAnnualPlanEdit" hidden>取消编辑</button></form>
   </div></div>
   <div class="modalback" id="recurringModal"><div class="modal">
     <div class="modalhead"><h2>周期记账</h2><button class="close" data-close="recurringModal" aria-label="关闭">×</button></div>

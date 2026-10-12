@@ -20,7 +20,7 @@ let pendingImport = [];
 let importFilter = 'all';
 let paymentDraftId = null;
 let paymentNotices = [];
-let data = { entries: [], budgets: {}, customCategories: [], recurring: [], recurringAcknowledged: {}, accounts: [], importRules: [], lastBackupAt: '' };
+let data = { entries: [], budgets: {}, customCategories: [], recurring: [], recurringAcknowledged: {}, accounts: [], importRules: [], templates: [], annualPlans: [], lastBackupAt: '' };
 function normalizeData() {
   if (!Array.isArray(data.entries)) data.entries = [];
   if (!data.budgets || typeof data.budgets !== 'object') data.budgets = {};
@@ -29,6 +29,10 @@ function normalizeData() {
   if (!data.recurringAcknowledged || typeof data.recurringAcknowledged !== 'object') data.recurringAcknowledged = {};
   if (!Array.isArray(data.accounts)) data.accounts = [];
   if (!Array.isArray(data.importRules)) data.importRules = [];
+  if (!Array.isArray(data.templates)) data.templates = [];
+  if (!Array.isArray(data.annualPlans)) data.annualPlans = [];
+  if (typeof data.missingCheckEnabled !== 'boolean') data.missingCheckEnabled = true;
+  if (typeof data.missingCheckDismissedUntil !== 'string') data.missingCheckDismissedUntil = '';
   if (typeof data.lastBackupAt !== 'string') data.lastBackupAt = '';
   if (![7, 30, 90].includes(Number(data.backupIntervalDays))) data.backupIntervalDays = 30;
 }
@@ -93,7 +97,7 @@ function renderRecordList(id, list, emptyText) {
     row.querySelector('b').textContent = entry.note || (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '月度收入' : entry.type === 'refund' ? '退款' : Array.isArray(entry.splits) && entry.splits.length ? '多类别支出' : entry.category);
     const accountName = id => data.accounts.find(account => account.id === id)?.name || '未知账户';
     const accountText = entry.transferFrom ? ` · ${accountName(entry.transferFrom)} → ${accountName(entry.transferTo)}` : entry.accountId ? ` · ${accountName(entry.accountId)}` : '';
-    row.querySelector('small').textContent = entry.date + ' · ' + (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '收入' : entry.type === 'excluded' ? '不计收支' : entry.type === 'refund' ? `${entry.category}退款` : Array.isArray(entry.splits) && entry.splits.length ? entry.splits.map(part => `${part.category}${money(part.amount)}`).join('、') : entry.category) + (entry.source ? ` · ${entry.source}` : '') + accountText;
+    row.querySelector('small').textContent = entry.date + ' · ' + (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '收入' : entry.type === 'excluded' ? '不计收支' : entry.type === 'refund' ? `${entry.category}退款` : Array.isArray(entry.splits) && entry.splits.length ? entry.splits.map(part => `${part.category}${money(part.amount)}`).join('、') : entry.category) + (entry.merchant ? ` · ${entry.merchant}` : '') + (entry.source ? ` · ${entry.source}` : '') + accountText;
   });
 }
 function renderStats(list, income, expense) {
@@ -157,7 +161,7 @@ function render() {
   const category = $('recordCategory').value;
   const detailList = $('allMonths').checked ? liveEntries().sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id) : list;
   const filtered = detailList.filter(e => (detailFilter === 'all' || e.type === detailFilter || detailFilter === 'expense' && e.type === 'refund')
-    && (!search || `${e.note || ''} ${e.source || ''} ${e.category || ''}`.toLocaleLowerCase().includes(search))
+    && (!search || `${e.note || ''} ${e.merchant || ''} ${e.source || ''} ${e.category || ''}`.toLocaleLowerCase().includes(search))
     && (!source || (source === 'manual' ? !e.source : e.source === source))
     && (!category || e.category === category || e.type === 'expense' && JianjiFeatures.expenseParts(e).some(part => part.category === category)));
   $('count').textContent = `共 ${filtered.length} 笔`;
@@ -180,6 +184,9 @@ function render() {
     $('budgetRemaining').innerHTML = `<b>各类可用额度合计 ${money(left)}</b><small>${over > 0 ? `其他类别已超 ${money(over)}。` : ''}${currentMonth ? `本月剩余 ${days} 天，日均参考 ${money(left / days)}。` : ''}仅计算已设预算的类别。</small>`;
   }
   renderPlanning(list, budgets);
+  renderTemplates();
+  renderAnnualPlans();
+  renderMissingCheck();
   renderRecordList('recentRecords', list.slice(0, 3), '这个月还没有记录，点「记一笔」开始');
   renderRecordList('records', filtered, filtered.length ? '' : detailFilter === 'all' ? '这个月还没有记录，点「记一笔」开始' : '这个月没有这类记录');
   renderStats(list, income, expense);
@@ -207,6 +214,9 @@ function setType(type) {
   $('excludedTab').classList.toggle('active', type === 'excluded');
   $('categoryField').style.display = type === 'expense' ? 'block' : 'none';
   $('splitField').hidden = type !== 'expense';
+  $('merchantField').hidden = type !== 'expense';
+  $('rememberMerchantField').hidden = type !== 'expense';
+  if (type !== 'expense') $('merchantRuleSuggestion').hidden = true;
   if (type === 'expense') updateSplitUI();
 }
 function splitRows() {
@@ -263,10 +273,10 @@ function selectImage(file) {
 }
 function refreshCategoryUI() {
   refreshCats();
-  for (const id of ['entryCategory', 'budgetCategory', 'recordCategory', 'recurringCategory', 'ruleCategory']) {
+  for (const id of ['entryCategory', 'budgetCategory', 'recordCategory', 'recurringCategory', 'ruleCategory', 'templateCategory', 'annualPlanCategory']) {
     const select = $(id);
     const old = select.value;
-    select.innerHTML = (id === 'recordCategory' ? '<option value="">全部类别</option>' : '') + cats.map(category => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join('');
+    select.innerHTML = (id === 'recordCategory' ? '<option value="">全部类别</option>' : id === 'annualPlanCategory' ? '<option value="">不关联类别</option>' : '') + cats.map(category => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join('');
     if (cats.includes(old)) select.value = old;
   }
   $('categoryShortcuts').innerHTML = cats.map(category => `<button type="button" class="category-shortcut ${toneClass(category)}" data-quick-category="${escapeHtml(category)}" aria-label="记录${escapeHtml(category)}支出"><span class="shortcut-icon">${iconMarkup(category)}</span><span>${escapeHtml(category)}</span></button>`).join('');
@@ -276,18 +286,35 @@ function renderCustomCategories() {
   $('customCategoryList').innerHTML = data.customCategories.map((item, index) => `<div class="settings-row"><span class="category-mini ${toneClass(item.name)}">${iconMarkup(item.name)}</span><input data-category-edit="${index}" maxlength="12" value="${escapeHtml(item.name)}" aria-label="分类名称"><button data-category-rename="${index}">改名</button><button data-category-delete="${index}">删除</button></div>`).join('') || '<div class="empty">还没有自定义分类</div>';
 }
 function refreshAccountUI() {
-  for (const id of ['entryAccount', 'transferFrom', 'transferTo']) {
+  for (const id of ['entryAccount', 'transferFrom', 'transferTo', 'templateAccount', 'reconcileAccount']) {
     const select = $(id);
     const selected = select.value;
-    select.innerHTML = (id === 'entryAccount' ? '<option value="">未指定账户</option>' : '') + data.accounts.map(account => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.name)}</option>`).join('');
+    select.innerHTML = (id === 'entryAccount' || id === 'templateAccount' ? '<option value="">未指定账户</option>' : '') + data.accounts.map(account => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.name)}</option>`).join('');
     if (selected && data.accounts.some(account => account.id === selected)) select.value = selected;
   }
 }
 function renderAccounts() {
-  $('accountList').innerHTML = data.accounts.map(account => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(account.name)}</b><small>当前余额 ${money(JianjiFeatures.accountBalance(account, data.entries))}</small></div><button data-account-edit="${escapeHtml(account.id)}">编辑</button><button data-account-delete="${escapeHtml(account.id)}">删除</button></div>`).join('') || '<div class="empty">还没有账户，可先添加现金、银行卡等</div>';
+  $('accountList').innerHTML = data.accounts.map(account => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(account.name)}</b><small>当前余额 ${money(JianjiFeatures.accountBalance(account, data.entries))}${account.lastReconciledAt ? ` · 上次核对 ${escapeHtml(account.lastReconciledAt.slice(0, 10))}` : ''}</small></div><button data-account-edit="${escapeHtml(account.id)}">编辑</button><button data-account-delete="${escapeHtml(account.id)}">删除</button></div>`).join('') || '<div class="empty">还没有账户，可先添加现金、银行卡等</div>';
 }
 function renderImportRules() {
-  $('importRuleList').innerHTML = data.importRules.map(rule => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(rule.keyword)} → ${escapeHtml(rule.category)}</b><small>${escapeHtml(rule.source || '微信和支付宝')}</small></div><button data-rule-remove="${escapeHtml(rule.id)}">删除</button></div>`).join('') || '<div class="empty">还没有分类规则</div>';
+  $('importRuleList').innerHTML = data.importRules.map(rule => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(rule.keyword)} → ${escapeHtml(rule.category)}</b><small>${escapeHtml(rule.source || '全部来源')}</small></div><button data-rule-remove="${escapeHtml(rule.id)}">删除</button></div>`).join('') || '<div class="empty">还没有分类规则</div>';
+}
+function renderTemplates() {
+  $('templateShortcuts').innerHTML = data.templates.map(template => `<button type="button" data-use-template="${escapeHtml(template.id)}">${escapeHtml(template.name)} · ${money(template.amount)}</button>`).join('') || '<span class="muted">还没有常用模板</span>';
+  $('templateList').innerHTML = data.templates.map(template => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(template.name)}</b><small>${template.type === 'income' ? '收入' : escapeHtml(template.category)} · ${money(template.amount)}</small></div><button data-template-edit="${escapeHtml(template.id)}">编辑</button><button data-template-delete="${escapeHtml(template.id)}">删除</button></div>`).join('') || '<div class="empty">还没有模板</div>';
+}
+function renderAnnualPlans() {
+  const summaries = data.annualPlans.map(plan => ({ plan, progress: JianjiFeatures.annualPlanProgress(plan, liveEntries()) }));
+  $('annualPlanSummary').innerHTML = summaries.map(({ plan, progress }) => `<div class="budgetrow"><div class="rowtop"><b>${escapeHtml(plan.name)} · ${plan.year} 年</b><span>已预留 ${money(progress.saved)} / ${money(plan.target)}</span></div><small>距目标还差 ${money(progress.remaining)} · ${progress.overdue ? '计划月份已过' : `每月建议预留 ${money(progress.monthly)}`}${plan.category ? ` · ${escapeHtml(plan.category)}已花 ${money(progress.spent)}` : ''}</small></div>`).join('') || '<div class="empty">为年费、保险或旅行设置一个计划</div>';
+  $('annualPlanList').innerHTML = summaries.map(({ plan, progress }) => `<div class="annual-plan-row"><div class="settings-row-main"><b>${escapeHtml(plan.name)} · ${plan.year} 年 ${plan.month} 月</b><small>目标 ${money(plan.target)}，已预留 ${money(progress.saved)}，还需 ${money(progress.remaining)}${plan.category ? ` · ${escapeHtml(plan.category)}已花 ${money(progress.spent)}` : ''}</small></div><div class="annual-plan-actions"><input type="number" min="0.01" step="0.01" placeholder="本次预留金额" aria-label="为${escapeHtml(plan.name)}预留金额" data-plan-contribution="${escapeHtml(plan.id)}"><button data-plan-add="${escapeHtml(plan.id)}">预留</button>${plan.contributions?.length ? `<button data-plan-undo="${escapeHtml(plan.id)}">撤销上次预留</button>` : ''}<button data-plan-edit="${escapeHtml(plan.id)}">编辑</button><button data-plan-delete="${escapeHtml(plan.id)}">删除</button></div></div>`).join('') || '<div class="empty">还没有年度计划</div>';
+}
+function renderMissingCheck() {
+  const today = new Date().toLocaleDateString('en-CA');
+  const days = JianjiFeatures.daysWithoutEntry(data.entries);
+  const show = data.missingCheckEnabled && days >= 3 && data.missingCheckDismissedUntil < today;
+  $('missingCheckCard').hidden = !show;
+  if (show) $('missingCheckText').textContent = `已 ${days} 天没有记录新的收支。如果最近有付款或收入，可以检查是否漏记。`;
+  $('missingCheckEnabled').checked = data.missingCheckEnabled;
 }
 refreshCategoryUI();
 refreshAccountUI();
@@ -314,17 +341,142 @@ function openNewEntry(category = '餐饮') {
   $('splitRows').replaceChildren();
   $('removeStoredPhotoField').hidden = true;
   $('entryDate').value = new Date().toLocaleDateString('en-CA');
+  $('merchantRuleSuggestion').hidden = true;
   clearSelectedImage();
   setType('expense');
   $('entryCategory').value = category;
   open('entryModal');
   $('entryAmount').focus();
 }
+let suggestedMerchantRule = null;
+function updateMerchantRuleSuggestion() {
+  const keyword = ($('entryMerchant').value || $('entryNote').value).trim().toLocaleLowerCase();
+  suggestedMerchantRule = entryType === 'expense' && keyword ? data.importRules.find(rule => !rule.source && cats.includes(rule.category) && rule.keyword?.trim() && keyword.includes(rule.keyword.trim().toLocaleLowerCase())) : null;
+  $('merchantRuleSuggestion').hidden = !suggestedMerchantRule;
+  if (suggestedMerchantRule) $('merchantRuleText').textContent = `根据「${suggestedMerchantRule.keyword}」建议：${suggestedMerchantRule.category}`;
+}
+$('entryMerchant').oninput = updateMerchantRuleSuggestion;
+$('entryNote').oninput = updateMerchantRuleSuggestion;
+$('applyMerchantRule').onclick = () => { if (suggestedMerchantRule) { $('entryCategory').value = suggestedMerchantRule.category; $('merchantRuleSuggestion').hidden = true; } };
 $('add').onclick = () => openNewEntry();
 $('heroAdd').onclick = () => openNewEntry();
 $('categoryShortcuts').onclick = event => {
   const button = event.target.closest('[data-quick-category]');
   if (button) openNewEntry(button.dataset.quickCategory);
+};
+let editingTemplateId = null;
+$('manageTemplates').onclick = () => { editingTemplateId = null; $('templateForm').reset(); $('templateForm').querySelector('button.primary').textContent = '添加模板'; renderTemplates(); open('templateModal'); };
+$('templateType').onchange = () => { $('templateCategory').parentElement.hidden = $('templateType').value !== 'expense'; };
+$('templateShortcuts').onclick = event => {
+  const button = event.target.closest('[data-use-template]');
+  const template = data.templates.find(item => item.id === button?.dataset.useTemplate);
+  if (!template) return;
+  openNewEntry(template.category && cats.includes(template.category) ? template.category : cats[0]);
+  setType(template.type);
+  $('entryAmount').value = template.amount;
+  $('entryNote').value = template.note || '';
+  $('entryAccount').value = data.accounts.some(account => account.id === template.accountId) ? template.accountId : '';
+  $('entryAmount').focus();
+};
+$('templateForm').onsubmit = async event => {
+  event.preventDefault();
+  const amount = Number($('templateAmount').value);
+  const name = $('templateName').value.trim();
+  if (!name || !Number.isFinite(amount) || amount <= 0 || data.templates.some(item => item.name === name && item.id !== editingTemplateId)) return toast('模板名称已存在或金额无效');
+  if (!editingTemplateId && data.templates.length >= 1000) return toast('模板已达到上限');
+  const before = structuredClone(data.templates);
+  const template = { id: editingTemplateId || crypto.randomUUID(), name, type: $('templateType').value, amount, category: $('templateCategory').value, accountId: $('templateAccount').value, note: $('templateNote').value.trim() };
+  const index = data.templates.findIndex(item => item.id === editingTemplateId);
+  if (index >= 0) data.templates[index] = template; else data.templates.push(template);
+  try { await save(); } catch { data.templates = before; return toast('模板保存失败'); }
+  editingTemplateId = null; $('templateForm').reset(); $('templateCategory').parentElement.hidden = false;
+  $('templateForm').querySelector('button.primary').textContent = '添加模板';
+  renderTemplates(); toast('模板已保存');
+};
+$('templateList').onclick = async event => {
+  const edit = event.target.closest('[data-template-edit]');
+  const remove = event.target.closest('[data-template-delete]');
+  const template = data.templates.find(item => item.id === (edit?.dataset.templateEdit || remove?.dataset.templateDelete));
+  if (!template) return;
+  if (edit) {
+    editingTemplateId = template.id;
+    $('templateName').value = template.name; $('templateType').value = template.type; $('templateAmount').value = template.amount;
+    $('templateCategory').value = template.category; $('templateAccount').value = template.accountId || ''; $('templateNote').value = template.note || '';
+    $('templateType').onchange(); $('templateForm').querySelector('button.primary').textContent = '保存模板修改';
+    $('templateForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  const before = data.templates;
+  data.templates = before.filter(item => item !== template);
+  try { await save(); } catch { data.templates = before; return toast('模板删除失败'); }
+  renderTemplates();
+};
+for (let month = 1; month <= 12; month++) $('annualPlanMonth').add(new Option(`${month} 月`, String(month)));
+let editingAnnualPlanId = null;
+function resetAnnualPlanForm() {
+  editingAnnualPlanId = null;
+  $('annualPlanForm').reset();
+  $('annualPlanYear').value = new Date().getFullYear();
+  $('annualPlanMonth').value = '12';
+  $('annualPlanForm').querySelector('button.primary').textContent = '添加计划';
+  $('cancelAnnualPlanEdit').hidden = true;
+}
+$('cancelAnnualPlanEdit').onclick = resetAnnualPlanForm;
+$('manageAnnualPlans').onclick = () => { resetAnnualPlanForm(); renderAnnualPlans(); open('annualPlanModal'); };
+$('annualPlanForm').onsubmit = async event => {
+  event.preventDefault();
+  const year = Number($('annualPlanYear').value), month = Number($('annualPlanMonth').value), target = Number($('annualPlanTarget').value);
+  const name = $('annualPlanName').value.trim();
+  if (!name || !Number.isInteger(year) || year < 2000 || year > 2100 || !Number.isInteger(month) || month < 1 || month > 12 || !Number.isFinite(target) || target <= 0) return toast('计划信息无效');
+  if (data.annualPlans.some(item => item.name === name && item.year === year && item.id !== editingAnnualPlanId)) return toast('这一年的同名计划已存在');
+  if (!editingAnnualPlanId && data.annualPlans.length >= 1000) return toast('年度计划已达到上限');
+  const before = structuredClone(data.annualPlans);
+  const index = data.annualPlans.findIndex(item => item.id === editingAnnualPlanId);
+  const plan = { ...(index >= 0 ? data.annualPlans[index] : { id: crypto.randomUUID(), contributions: [] }), name, year, month, target, category: $('annualPlanCategory').value };
+  if (index >= 0) data.annualPlans[index] = plan; else data.annualPlans.push(plan);
+  try { await save(); } catch { data.annualPlans = before; return toast('计划保存失败'); }
+  resetAnnualPlanForm(); renderAnnualPlans(); toast('年度计划已保存');
+};
+$('annualPlanList').onclick = async event => {
+  const add = event.target.closest('[data-plan-add]'), remove = event.target.closest('[data-plan-delete]'), undo = event.target.closest('[data-plan-undo]'), edit = event.target.closest('[data-plan-edit]');
+  const plan = data.annualPlans.find(item => item.id === (add?.dataset.planAdd || remove?.dataset.planDelete || undo?.dataset.planUndo || edit?.dataset.planEdit));
+  if (!plan) return;
+  if (edit) {
+    editingAnnualPlanId = plan.id;
+    $('annualPlanName').value = plan.name; $('annualPlanYear').value = plan.year; $('annualPlanTarget').value = plan.target;
+    $('annualPlanMonth').value = plan.month; $('annualPlanCategory').value = plan.category || '';
+    $('annualPlanForm').querySelector('button.primary').textContent = '保存计划修改'; $('cancelAnnualPlanEdit').hidden = false;
+    $('annualPlanForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  const before = structuredClone(data.annualPlans);
+  if (add) {
+    const amount = Number(add.parentElement.querySelector('input').value);
+    if (!Number.isFinite(amount) || amount <= 0) return toast('请输入有效的预留金额');
+    plan.contributions ??= [];
+    if (plan.contributions.length >= 10000) return toast('预留记录已达到上限');
+    plan.contributions.push({ id: crypto.randomUUID(), amount, date: new Date().toLocaleDateString('en-CA') });
+  } else if (undo) plan.contributions.pop();
+  else {
+    if (!confirm(`删除「${plan.name}」及其预留记录吗？`)) return;
+    data.annualPlans = data.annualPlans.filter(item => item !== plan);
+    if (editingAnnualPlanId === plan.id) resetAnnualPlanForm();
+  }
+  try { await save(); } catch { data.annualPlans = before; return toast('计划更新失败'); }
+  renderAnnualPlans();
+};
+$('missingCheckEnabled').onchange = async () => {
+  const before = data.missingCheckEnabled;
+  data.missingCheckEnabled = $('missingCheckEnabled').checked;
+  try { await save(); } catch { data.missingCheckEnabled = before; $('missingCheckEnabled').checked = before; return toast('设置保存失败'); }
+  renderMissingCheck();
+};
+$('dismissMissingCheck').onclick = async () => {
+  const before = data.missingCheckDismissedUntil;
+  const until = new Date(); until.setDate(until.getDate() + 7);
+  data.missingCheckDismissedUntil = until.toLocaleDateString('en-CA');
+  try { await save(); } catch { data.missingCheckDismissedUntil = before; return toast('设置保存失败'); }
+  renderMissingCheck();
 };
 $('setbudget').onclick = () => {
   $('budgetCategory').value = cats[0];
@@ -377,12 +529,14 @@ $('customCategoryList').onclick = async event => {
     }
     for (const rule of data.recurring) if (rule.category === item.name) rule.category = name;
     for (const rule of data.importRules) if (rule.category === item.name) rule.category = name;
+    for (const template of data.templates) if (template.category === item.name) template.category = name;
+    for (const plan of data.annualPlans) if (plan.category === item.name) plan.category = name;
     for (const budget of Object.values(data.budgets)) if (Object.hasOwn(budget, item.name)) { budget[name] = budget[item.name]; delete budget[item.name]; }
     item.name = name;
     try { await save(); } catch { data = JSON.parse(before); return toast('分类改名失败'); }
     refreshCategoryUI(); renderCustomCategories(); render(); toast('分类已改名');
   } else {
-    if (data.entries.some(entry => entry.category === item.name || entry.splits?.some(part => part.category === item.name)) || data.recurring.some(rule => rule.category === item.name) || data.importRules.some(rule => rule.category === item.name) || Object.values(data.budgets).some(budget => Number(budget[item.name]) > 0)) return toast('此分类仍有账目、周期规则、导入规则或预算，请先调整它们');
+    if (data.entries.some(entry => entry.category === item.name || entry.splits?.some(part => part.category === item.name)) || data.recurring.some(rule => rule.category === item.name) || data.importRules.some(rule => rule.category === item.name) || data.templates.some(template => template.category === item.name) || data.annualPlans.some(plan => plan.category === item.name) || Object.values(data.budgets).some(budget => Number(budget[item.name]) > 0)) return toast('此分类仍被账目、模板、计划或预算使用，请先调整它们');
     data.customCategories.splice(index, 1);
     try { await save(); } catch { data.customCategories.splice(index, 0, item); return toast('分类删除失败'); }
     refreshCategoryUI(); renderCustomCategories(); render(); toast('分类已删除');
@@ -390,7 +544,7 @@ $('customCategoryList').onclick = async event => {
 };
 let editingAccountId = null;
 let editingTransferId = null;
-$('manageAccounts').onclick = () => { editingAccountId = null; editingTransferId = null; $('accountForm').reset(); $('accountForm').querySelector('button').textContent = '添加账户'; $('transferForm').reset(); $('transferForm').querySelector('button').textContent = '记录转账'; $('transferDate').value = new Date().toLocaleDateString('en-CA'); renderAccounts(); open('accountModal'); };
+$('manageAccounts').onclick = () => { editingAccountId = null; editingTransferId = null; $('accountForm').reset(); $('accountForm').querySelector('button').textContent = '添加账户'; $('transferForm').reset(); $('transferForm').querySelector('button').textContent = '记录转账'; $('transferDate').value = new Date().toLocaleDateString('en-CA'); $('reconcileForm').reset(); resetReconcile(); renderAccounts(); renderReconcileHistory(); open('accountModal'); };
 $('accountForm').onsubmit = async event => {
   event.preventDefault();
   const name = $('accountName').value.trim();
@@ -404,7 +558,7 @@ $('accountForm').onsubmit = async event => {
   editingAccountId = null;
   $('accountForm').reset();
   $('accountForm').querySelector('button').textContent = '添加账户';
-  refreshAccountUI(); renderAccounts(); render(); toast('账户已保存');
+  refreshAccountUI(); renderAccounts(); renderReconcileHistory(); render(); toast('账户已保存');
 };
 $('accountList').onclick = async event => {
   const edit = event.target.closest('[data-account-edit]');
@@ -419,11 +573,57 @@ $('accountList').onclick = async event => {
     $('accountForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
     return;
   }
-  if (data.entries.some(entry => entry.accountId === account.id || entry.transferFrom === account.id || entry.transferTo === account.id)) return toast('此账户已有账目，请先调整账目后再删除');
+  if (data.entries.some(entry => entry.accountId === account.id || entry.transferFrom === account.id || entry.transferTo === account.id) || data.templates.some(template => template.accountId === account.id) || account.reconciliations?.length) return toast('此账户仍有关联账目、模板或对账记录，请先处理');
   const before = data.accounts;
   data.accounts = before.filter(item => item !== account);
   try { await save(); } catch { data.accounts = before; return toast('账户删除失败'); }
   refreshAccountUI(); renderAccounts(); toast('账户已删除');
+};
+let reconcilePending = '';
+function resetReconcile() { reconcilePending = ''; $('reconcileSave').textContent = '核对余额'; $('reconcileResult').textContent = ''; }
+function renderReconcileHistory() {
+  const account = data.accounts.find(item => item.id === $('reconcileAccount').value);
+  $('reconcileHistory').innerHTML = (account?.reconciliations || []).slice(-5).reverse().map((item, index) => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(item.date)} · 校正 ${money(item.delta)}</b><small>当时实际余额 ${money(item.actual)}</small></div>${index === 0 ? `<button data-reconcile-undo="${escapeHtml(item.id)}">撤销</button>` : ''}</div>`).join('') || '<div class="empty">暂无余额校正记录</div>';
+}
+$('reconcileAccount').onchange = () => { resetReconcile(); renderReconcileHistory(); };
+$('reconcileActual').oninput = resetReconcile;
+$('reconcileForm').onsubmit = async event => {
+  event.preventDefault();
+  const account = data.accounts.find(item => item.id === $('reconcileAccount').value);
+  if (!account || $('reconcileActual').value.trim() === '') return toast('请选择账户并填写实际余额');
+  const actual = Number($('reconcileActual').value);
+  if (!Number.isFinite(actual)) return toast('实际余额无效');
+  const delta = JianjiFeatures.reconcileDifference(account, data.entries, actual);
+  if (!delta) {
+    const previous = account.lastReconciledAt;
+    account.lastReconciledAt = new Date().toISOString();
+    try { await save(); } catch { account.lastReconciledAt = previous; return toast('对账结果保存失败'); }
+    resetReconcile(); $('reconcileResult').textContent = '余额一致，已标记为核对完成。'; renderAccounts(); return;
+  }
+  const signature = `${account.id}|${actual}|${delta}`;
+  if (reconcilePending !== signature) {
+    reconcilePending = signature;
+    $('reconcileResult').textContent = `账本余额 ${money(JianjiFeatures.accountBalance(account, data.entries))}，实际余额 ${money(actual)}，差额 ${money(delta)}。请先检查漏记账目；若确认差额无须逐笔补记，再点一次校正。`;
+    $('reconcileSave').textContent = '确认余额校正';
+    return;
+  }
+  const before = structuredClone(account);
+  account.reconciliations ??= [];
+  if (account.reconciliations.length >= 10000) return toast('对账记录已达到上限');
+  account.reconciliations.push({ id: crypto.randomUUID(), date: new Date().toLocaleDateString('en-CA'), actual, delta });
+  account.lastReconciledAt = new Date().toISOString();
+  try { await save(); } catch { Object.assign(account, before); return toast('余额校正保存失败'); }
+  resetReconcile(); $('reconcileResult').textContent = '余额已校正；此差额不计入收支。'; renderAccounts(); renderReconcileHistory();
+};
+$('reconcileHistory').onclick = async event => {
+  const button = event.target.closest('[data-reconcile-undo]');
+  if (!button) return;
+  const account = data.accounts.find(item => item.id === $('reconcileAccount').value);
+  if (!account) return;
+  const before = structuredClone(account.reconciliations || []);
+  account.reconciliations = before.filter(item => item.id !== button.dataset.reconcileUndo);
+  try { await save(); } catch { account.reconciliations = before; return toast('撤销失败'); }
+  resetReconcile(); renderAccounts(); renderReconcileHistory(); toast('已撤销余额校正');
 };
 $('transferForm').onsubmit = async event => {
   event.preventDefault();
@@ -444,6 +644,7 @@ $('importRuleForm').onsubmit = async event => {
   event.preventDefault();
   const keyword = $('ruleKeyword').value.trim(), source = $('ruleSource').value, category = $('ruleCategory').value;
   if (!keyword || !cats.includes(category) || data.importRules.some(rule => rule.keyword === keyword && rule.source === source)) return toast('规则无效或已存在');
+  if (data.importRules.length >= 1000) return toast('商户分类规则已达到上限');
   data.importRules.push({ id: crypto.randomUUID(), keyword, source, category });
   try { await save(); } catch { data.importRules.pop(); return toast('规则保存失败'); }
   $('ruleKeyword').value = ''; renderImportRules(); toast('分类规则已添加');
@@ -578,6 +779,8 @@ $('recognizeImage').onclick = async () => {
     const suggestion = JianjiOcr.suggest(result.text);
     if (suggestion.amount && !$('entryAmount').value) $('entryAmount').value = suggestion.amount.toFixed(2);
     if (suggestion.merchant && !$('entryNote').value) $('entryNote').value = suggestion.merchant;
+    if (suggestion.merchant && !$('entryMerchant').value) $('entryMerchant').value = suggestion.merchant.slice(0, 40);
+    updateMerchantRuleSuggestion();
     $('ocrStatus').textContent = suggestion.amount || suggestion.merchant
       ? `已预填${suggestion.amount ? '金额' : ''}${suggestion.amount && suggestion.merchant ? '和' : ''}${suggestion.merchant ? '商户' : ''}，请核对后保存。`
       : suggestion.ambiguous ? '图片中有多个不同金额，未自动填写；请手动核对。' : '未找到明确的金额或商户，请手动填写。';
@@ -616,7 +819,7 @@ function applyImportFilter() {
 function renderImportPreview() {
   $('importPreview').innerHTML = pendingImport.map((entry, index) => {
     const duplicate = entry.duplicateMatchId !== null;
-    return `<div class="import-item" data-review="${Boolean(entry.reviewReason || duplicate)}" data-duplicate="${duplicate}">${duplicate ? '' : `<input type="checkbox" data-import-index="${index}" aria-label="导入第 ${index + 1} 笔" checked>`}<div class="import-item-main"><b>${escapeHtml(entry.note)}</b><small>${escapeHtml(entry.transactionTime)} · ${entry.source}${entry.reviewReason ? ' · 请核对：' + escapeHtml(entry.reviewReason) : ''}</small>${duplicate ? `<small class="duplicate-hint">可能已记账：${escapeHtml(entry.duplicateHint)}。请选择如何处理。</small><select class="reconcile-choice" data-reconcile-index="${index}" aria-label="疑似重复账目处理方式"><option value="skip">暂不导入</option><option value="merge">关联已有手动账目</option><option value="new">仍新增一笔</option></select>` : ''}<select data-type-index="${index}" aria-label="${escapeHtml(entry.note)}的收支类型"><option value="expense"${entry.type === 'expense' ? ' selected' : ''}>支出</option><option value="income"${entry.type === 'income' ? ' selected' : ''}>收入</option><option value="excluded"${entry.type === 'excluded' ? ' selected' : ''}>不计收支</option></select><select data-category-index="${index}" aria-label="${escapeHtml(entry.note)}的分类"${entry.type !== 'expense' ? ' hidden' : ''}>${cats.map(category => `<option value="${escapeHtml(category)}"${category === entry.category ? ' selected' : ''}>${escapeHtml(category)}</option>`).join('')}</select></div><span class="import-item-amount ${entry.type === 'income' ? 'income' : ''}">${entry.type === 'income' ? '+' : entry.type === 'excluded' ? '' : '−'}${money(entry.amount)}</span></div>`;
+    return `<div class="import-item" data-review="${Boolean(entry.reviewReason || duplicate)}" data-duplicate="${duplicate}">${duplicate ? '' : `<input type="checkbox" data-import-index="${index}" aria-label="导入第 ${index + 1} 笔" checked>`}<div class="import-item-main"><b>${escapeHtml(entry.note)}</b><small>${escapeHtml(entry.transactionTime)} · ${entry.source}${entry.reviewReason ? ' · 请核对：' + escapeHtml(entry.reviewReason) : ''}</small>${duplicate ? `<small class="duplicate-hint">可能已记账：${escapeHtml(entry.duplicateHint)}。请选择如何处理。</small><select class="reconcile-choice" data-reconcile-index="${index}" aria-label="疑似重复账目处理方式"><option value="skip">暂不导入</option><option value="merge">关联已有手动账目</option><option value="new">仍新增一笔</option></select>` : ''}<select data-type-index="${index}" aria-label="${escapeHtml(entry.note)}的收支类型"><option value="expense"${entry.type === 'expense' ? ' selected' : ''}>支出</option><option value="income"${entry.type === 'income' ? ' selected' : ''}>收入</option><option value="excluded"${entry.type === 'excluded' ? ' selected' : ''}>不计收支</option></select><select data-category-index="${index}" aria-label="${escapeHtml(entry.note)}的分类"${entry.type !== 'expense' ? ' hidden' : ''}>${cats.map(category => `<option value="${escapeHtml(category)}"${category === entry.category ? ' selected' : ''}>${escapeHtml(category)}</option>`).join('')}</select><label class="import-remember"${entry.type !== 'expense' ? ' hidden' : ''}><input type="checkbox" data-remember-index="${index}"> 记住商户分类</label><input data-merchant-keyword-index="${index}" maxlength="40" value="${escapeHtml(entry.note.slice(0, 40))}" aria-label="商户分类关键词"${entry.type !== 'expense' ? ' hidden' : ''}></div><span class="import-item-amount ${entry.type === 'income' ? 'income' : ''}">${entry.type === 'income' ? '+' : entry.type === 'excluded' ? '' : '−'}${money(entry.amount)}</span></div>`;
   }).join('');
   [...$('importPreview').querySelectorAll('.import-item')].forEach((row, index) => {
     const entry = pendingImport[index];
@@ -672,6 +875,8 @@ $('importPreview').onchange = event => {
     const item = pendingImport[Number(event.target.dataset.typeIndex)];
     item.type = event.target.value;
     event.target.parentElement.querySelector('[data-category-index]').hidden = item.type !== 'expense';
+    event.target.parentElement.querySelector('[data-remember-index]').parentElement.hidden = item.type !== 'expense';
+    event.target.parentElement.querySelector('[data-merchant-keyword-index]').hidden = item.type !== 'expense';
     const amount = event.target.closest('.import-item').querySelector('.import-item-amount');
     amount.classList.toggle('income', item.type === 'income');
     amount.textContent = `${item.type === 'income' ? '+' : item.type === 'excluded' ? '' : '−'}${money(item.amount)}`;
@@ -683,6 +888,7 @@ $('confirmImport').onclick = async () => {
     .concat([...$('importPreview').querySelectorAll('[data-reconcile-index]')].filter(select => select.value !== 'skip').map(select => ({ entry: pendingImport[Number(select.dataset.reconcileIndex)], action: select.value })));
   if (!selected.length) return;
   const before = data.entries;
+  const rulesBefore = structuredClone(data.importRules);
   const replacement = [...before];
   let added = 0, merged = 0;
   for (const { entry, action } of selected) {
@@ -698,9 +904,22 @@ $('confirmImport').onclick = async () => {
     }
   }
   data.entries = replacement;
+  for (const { entry } of selected) {
+    if (entry.type !== 'expense') continue;
+    const index = pendingImport.indexOf(entry);
+    const remember = $('importPreview').querySelector(`[data-remember-index="${index}"]`);
+    if (!remember?.checked) continue;
+    const keyword = $('importPreview').querySelector(`[data-merchant-keyword-index="${index}"]`)?.value.trim();
+    if (!keyword) { data.entries = before; data.importRules = rulesBefore; return toast('要记住商户分类，请填写关键词'); }
+    const existing = data.importRules.find(rule => rule.source === entry.source && rule.keyword.toLocaleLowerCase() === keyword.toLocaleLowerCase());
+    if (existing) existing.category = entry.category;
+    else data.importRules.unshift({ id: crypto.randomUUID(), keyword, source: entry.source, category: entry.category });
+  }
+  if (data.importRules.length > 1000) { data.entries = before; data.importRules = rulesBefore; return toast('商户分类规则已达到上限'); }
   try { await save(); }
   catch {
     data.entries = before;
+    data.importRules = rulesBefore;
     toast('导入保存失败，请缩小账单时间范围');
     return;
   }
@@ -929,10 +1148,12 @@ $('entryForm').onsubmit = async e => {
   if (!Number.isFinite(amount) || amount <= 0) return;
   const original = editingId === null ? null : data.entries.find(item => String(item.id) === editingId);
   if (editingId !== null && !original) return toast('记录不存在，请重新打开');
-  const entry = { ...original, id: original?.id ?? Date.now() + Math.random(), type: entryType, amount, date: $('entryDate').value, category: entryType === 'expense' ? $('entryCategory').value : '', note: $('entryNote').value.trim(), accountId: $('entryAccount').value || '' };
+  const entry = { ...original, id: original?.id ?? Date.now() + Math.random(), type: entryType, amount, date: $('entryDate').value, category: entryType === 'expense' ? $('entryCategory').value : '', note: $('entryNote').value.trim(), merchant: entryType === 'expense' ? $('entryMerchant').value.trim() : '', accountId: $('entryAccount').value || '' };
+  if (entryType === 'expense' && $('rememberMerchant').checked && !entry.merchant) return toast('请先填写商户名称，再记住分类');
   if (entryType === 'expense' && $('splitEnabled').checked) {
     const parts = splitRows();
     if (!JianjiFeatures.validSplits(amount, parts, cats)) return toast('请让各类别金额相加等于总金额，且类别不重复');
+    if ($('rememberMerchant').checked) return toast('多类别支出请取消记住商户分类，或改为单一类别');
     entry.splits = parts;
     entry.category = parts[0].category;
   } else delete entry.splits;
@@ -958,14 +1179,22 @@ $('entryForm').onsubmit = async e => {
     catch { toast('图片保存失败，请检查浏览器存储空间'); return; }
   }
   const index = original ? data.entries.indexOf(original) : -1;
+  const previousRules = structuredClone(data.importRules);
   try {
     if (index >= 0) data.entries[index] = entry;
     else data.entries.push(entry);
+    if (entryType === 'expense' && $('rememberMerchant').checked && !entry.splits?.length) {
+      const existingRule = data.importRules.find(rule => !rule.source && rule.keyword.toLocaleLowerCase() === entry.merchant.toLocaleLowerCase());
+      if (existingRule) existingRule.category = entry.category;
+      else if (data.importRules.length < 1000) data.importRules.unshift({ id: crypto.randomUUID(), keyword: entry.merchant, source: '', category: entry.category });
+      else throw new Error('商户分类规则已达到上限');
+    }
     await save();
   }
   catch {
     if (index >= 0) data.entries[index] = original;
     else data.entries.pop();
+    data.importRules = previousRules;
     if (selectedImage) photoStore('delete', entry.photoId).catch(() => {});
     toast('记录保存失败，请检查浏览器存储空间');
     return;
@@ -1077,6 +1306,9 @@ async function handleRecordClick(e) {
     updateSplitUI();
     $('entryAccount').value = entry.accountId || '';
     $('entryNote').value = entry.note || '';
+    $('entryMerchant').value = entry.merchant || '';
+    $('rememberMerchant').checked = false;
+    updateMerchantRuleSuggestion();
     $('removeStoredPhotoField').hidden = !entry.photoId;
     $('removeStoredPhoto').checked = false;
     $('photoName').textContent = entry.photoId ? '已保存原图片；选择新图片可替换' : '可拍摄物品，也可选择相册里的网购截图';

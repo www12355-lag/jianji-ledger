@@ -42,11 +42,34 @@
       if (entry.transferTo === account.id) return balance + amount;
       if (entry.accountId !== account.id) return balance;
       return balance + (entry.type === 'income' || entry.type === 'refund' ? amount : entry.type === 'expense' ? -amount : 0);
-    }, Number(account.openingBalance) || 0);
+    }, (Number(account.openingBalance) || 0) + (account.reconciliations || []).reduce((sum, item) => sum + (Number(item.delta) || 0), 0));
+  }
+  function reconcileDifference(account, entries, actual) {
+    if (!Number.isFinite(Number(actual))) throw new Error('实际余额无效');
+    return (cents(actual) - cents(accountBalance(account, entries))) / 100;
+  }
+  function annualPlanProgress(plan, entries) {
+    const target = Number(plan.target) || 0;
+    const saved = (plan.contributions || []).reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+    const remaining = Math.max(0, target - saved);
+    const today = new Date();
+    const deadline = new Date(Number(plan.year), Number(plan.month), 0);
+    const months = (deadline.getFullYear() - today.getFullYear()) * 12 + deadline.getMonth() - today.getMonth() + 1;
+    const spent = entries.filter(entry => !entry.deletedAt && entry.date?.startsWith(String(plan.year)))
+      .reduce((sum, entry) => sum + (plan.category ? categoryNet(entry, plan.category) : 0), 0);
+    return { saved, remaining, monthly: months > 0 ? remaining / months : 0, overdue: months <= 0, spent };
+  }
+  function daysWithoutEntry(entries, today = new Date()) {
+    const current = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+    const last = entries.filter(entry => !entry.deletedAt && entry.type !== 'excluded' && /^\d{4}-\d{2}-\d{2}$/.test(entry.date || ''))
+      .map(entry => entry.date).sort().at(-1);
+    if (!last) return 0;
+    const [year, month, day] = last.split('-').map(Number);
+    return Math.max(0, Math.floor((current - Date.UTC(year, month - 1, day)) / 86400000));
   }
   function classifyImport(entry, rules) {
     if (entry.type !== 'expense') return entry;
-    const note = String(entry.note || '').toLocaleLowerCase();
+    const note = `${entry.merchant || ''} ${entry.note || ''}`.toLocaleLowerCase();
     const match = rules.find(rule => (!rule.source || rule.source === entry.source)
       && String(rule.keyword || '').trim()
       && note.includes(rule.keyword.trim().toLocaleLowerCase()));
@@ -77,7 +100,7 @@
     }
     return result.sort((a, b) => a.date.localeCompare(b.date));
   }
-  const api = { possibleDuplicates, recurringOccurrences, accountBalance, classifyImport, expenseParts, categoryNet, netExpense, validSplits, refundAvailable };
+  const api = { possibleDuplicates, recurringOccurrences, accountBalance, reconcileDifference, annualPlanProgress, daysWithoutEntry, classifyImport, expenseParts, categoryNet, netExpense, validSplits, refundAvailable };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.JianjiFeatures = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -66,6 +66,15 @@ button{cursor:pointer}
 .category-shortcuts{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
 .category-shortcut{border:1px solid #edf0f6;background:#fbfcff;border-radius:16px;min-width:0;padding:13px 5px 11px;display:flex;flex-direction:column;align-items:center;gap:8px;color:#536178;font-size:13px;font-weight:700;transition:transform .15s,box-shadow .15s}
 .category-shortcut:active{transform:scale(.96)}
+.template-head{margin:22px 0 10px!important}
+.template-shortcuts{display:flex;gap:8px;flex-wrap:wrap}
+.template-shortcuts button{border:1px solid #e3e8f6;border-radius:999px;background:#f7f9ff;color:#46587c;padding:9px 13px;font-size:13px;font-weight:700}
+.annual-plan-row{padding:13px 0;border-bottom:1px solid #eef1f6}
+.annual-plan-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+.annual-plan-actions input{flex:1;min-width:130px;padding:9px;border:1px solid #dfe5f0;border-radius:9px}
+.annual-plan-actions button{border:0;border-radius:9px;padding:9px 12px;background:#eef1ff;color:#5969de;font-weight:700}
+.import-remember{display:block;margin-top:8px;color:#536178;font-size:12px}
+.import-item-main input[data-merchant-keyword-index]{display:block;max-width:100%;margin-top:5px;padding:6px;border:1px solid #dfe5f0;border-radius:8px}
 .shortcut-icon{width:45px;height:45px;display:grid;place-items:center;border-radius:15px;background:var(--tone-bg);color:var(--tone-fg)}
 .category-glyph{display:inline-block;width:23px;height:23px;background:currentColor;mask:var(--glyph) center/contain no-repeat;-webkit-mask:var(--glyph) center/contain no-repeat;flex:none}
 .tone-coral{--tone-bg:#fff0e9;--tone-fg:#f47d58}
