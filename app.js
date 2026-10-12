@@ -6,6 +6,7 @@ const customIcon = category => data?.customCategories?.find(item => item.name ==
 const iconMarkup = category => `<span class="category-glyph" style="--glyph:url('assets/icons/${iconFiles[category] || iconFiles[customIcon(category)] || iconFiles.其他}.svg')" aria-hidden="true"></span>`;
 const toneClass = category => `tone-${iconTones[category] || iconTones[customIcon(category)] || 'slate'}`;
 const $ = id => document.getElementById(id);
+const onAndroid = () => window.Capacitor?.getPlatform?.() === 'android' && Boolean(window.Capacitor.nativePromise);
 const now = new Date();
 let view = new Date(now.getFullYear(), now.getMonth(), 1);
 let activePage = 'home';
@@ -37,10 +38,14 @@ refreshCats();
 const money = n => `${Number(n) < 0 ? '−' : ''}¥ ${Math.abs(Number(n || 0)).toFixed(2)}`;
 const key = () => `${view.getFullYear()}-${String(view.getMonth() + 1).padStart(2, '0')}`;
 let pendingWrites = Promise.resolve();
+let autoBackupConfigured = false;
+let lastAutoBackupAt = '';
+let autoBackupTimer = null;
 const save = () => {
   const snapshot = structuredClone(data);
   const operation = pendingWrites.then(() => JianjiStore.write(snapshot));
   pendingWrites = operation.catch(() => {});
+  operation.then(() => scheduleAutoBackup()).catch(() => {});
   return operation;
 };
 const escapeHtml = value => String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
@@ -130,10 +135,11 @@ function renderPlanning(list, budgets) {
   });
   $('budgetAlertCard').hidden = alerts.length === 0;
   $('budgetAlerts').innerHTML = alerts.map(({ category, used, limit }) => `<div class="budget-alert ${used >= limit ? 'over' : ''}"><b>${escapeHtml(category)}${used >= limit ? '已超出预算' : '接近预算'}</b><span>已用 ${money(used)} / ${money(limit)}</span></div>`).join('');
-  const days = data.lastBackupAt ? Math.floor((Date.now() - Date.parse(data.lastBackupAt)) / 86400000) : Infinity;
+  const lastSavedAt = [data.lastBackupAt, lastAutoBackupAt].filter(Boolean).sort((a, b) => Date.parse(a) - Date.parse(b)).at(-1) || '';
+  const days = lastSavedAt ? Math.floor((Date.now() - Date.parse(lastSavedAt)) / 86400000) : Infinity;
   const needsBackup = liveEntries().length > 0 && (!Number.isFinite(days) || days >= data.backupIntervalDays);
   $('backupReminder').hidden = !needsBackup;
-  $('backupReminder').innerHTML = needsBackup ? `${data.lastBackupAt ? `已超过 ${days} 天没有保存备份。` : '这个账本还没有保存过加密备份。'}<button type="button" id="backupReminderAction">现在备份</button>` : '';
+  $('backupReminder').innerHTML = needsBackup ? `${lastSavedAt ? `已超过 ${days} 天没有保存备份。` : '这个账本还没有保存过加密备份。'}<button type="button" id="backupReminderAction">现在备份</button>` : '';
 }
 function render() {
   visibleImageUrls.forEach(url => URL.revokeObjectURL(url));
@@ -239,6 +245,8 @@ function clearSelectedImage() {
   $('photoName').textContent = '可拍摄物品，也可选择相册里的网购截图';
   $('cameraInput').value = '';
   $('imageInput').value = '';
+  $('recognizeImage').hidden = true;
+  $('ocrStatus').textContent = '';
 }
 function selectImage(file) {
   if (!file) return;
@@ -250,6 +258,8 @@ function selectImage(file) {
   $('photoPreview').src = previewUrl;
   $('photoPreview').hidden = false;
   $('photoName').textContent = file.name || '已选择图片';
+  $('recognizeImage').hidden = !onAndroid();
+  $('ocrStatus').textContent = '';
 }
 function refreshCategoryUI() {
   refreshCats();
@@ -448,6 +458,29 @@ $('importRuleList').onclick = async event => {
 };
 let recurringType = 'expense';
 let editingRecurringId = null;
+let reminderEnabled = false;
+async function syncReminders(askPermission = false) {
+  if (!onAndroid()) return;
+  const rules = data.recurring.map(rule => ({ id: String(rule.id), frequency: rule.frequency, startDate: rule.startDate, active: rule.active !== false }));
+  await window.Capacitor.nativePromise('Reminder', 'configure', { rules, enabled: reminderEnabled, askPermission });
+}
+async function refreshReminderStatus() {
+  if (!onAndroid()) return;
+  $('reminderControls').hidden = false;
+  try {
+    const status = await window.Capacitor.nativePromise('Reminder', 'status', {});
+    reminderEnabled = Boolean(status.enabled);
+    $('toggleReminders').textContent = reminderEnabled ? '关闭系统提醒' : '开启系统提醒';
+    $('reminderStatus').textContent = reminderEnabled
+      ? status.permission ? '已开启：固定账单到期前一天约 9 点提醒；实际到达时间受系统省电设置影响。' : '提醒已开启，但还没有通知权限；请在系统应用设置中允许简记发送通知。'
+      : '系统提醒会在到期前一天约 9 点发出，不会自动记账。';
+  } catch { $('reminderStatus').textContent = '暂时无法读取系统提醒设置'; }
+}
+$('toggleReminders').onclick = async () => {
+  reminderEnabled = !reminderEnabled;
+  try { await syncReminders(reminderEnabled); await refreshReminderStatus(); }
+  catch (error) { reminderEnabled = !reminderEnabled; $('reminderStatus').textContent = error.message || '系统提醒设置失败'; }
+};
 function resetRecurringForm() {
   editingRecurringId = null;
   $('recurringForm').reset();
@@ -465,7 +498,7 @@ function setRecurringType(type) {
 function renderRecurringRules() {
   $('recurringRules').innerHTML = data.recurring.map(rule => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(rule.note)}</b><small>${rule.frequency === 'weekly' ? '每周' : '每月'} · ${money(rule.amount)} · ${rule.active === false ? '已暂停' : '进行中'}</small></div><button data-rule-edit="${escapeHtml(rule.id)}">编辑</button><button data-rule-toggle="${escapeHtml(rule.id)}">${rule.active === false ? '启用' : '暂停'}</button><button data-rule-delete="${escapeHtml(rule.id)}">删除</button></div>`).join('') || '<div class="empty">还没有周期账目</div>';
 }
-$('manageRecurring').onclick = () => { resetRecurringForm(); renderRecurringRules(); open('recurringModal'); };
+$('manageRecurring').onclick = () => { resetRecurringForm(); renderRecurringRules(); refreshReminderStatus(); open('recurringModal'); };
 $('cancelRecurringEdit').onclick = resetRecurringForm;
 $('recurringExpense').onclick = () => setRecurringType('expense');
 $('recurringIncome').onclick = () => setRecurringType('income');
@@ -479,6 +512,7 @@ $('recurringForm').onsubmit = async event => {
   const index = existing ? data.recurring.indexOf(existing) : -1;
   if (index >= 0) data.recurring[index] = rule; else data.recurring.push(rule);
   try { await save(); } catch { if (index >= 0) data.recurring[index] = existing; else data.recurring.pop(); return toast('周期账目保存失败'); }
+  syncReminders().catch(() => toast('账目已保存，但系统提醒未更新'));
   resetRecurringForm(); renderRecurringRules(); render(); toast(existing ? '周期规则已更新；已确认的历史账目保持不变' : '周期账目已添加');
 };
 $('recurringRules').onclick = async event => {
@@ -504,6 +538,7 @@ $('recurringRules').onclick = async event => {
   if (toggle) rule.active = rule.active === false;
   else data.recurring = data.recurring.filter(item => item !== rule);
   try { await save(); } catch { if (toggle) rule.active = !rule.active; else data.recurring.push(rule); return toast('保存失败'); }
+  syncReminders().catch(() => toast('账目已保存，但系统提醒未更新'));
   if (remove && editingRecurringId === rule.id) resetRecurringForm();
   renderRecurringRules(); render();
 };
@@ -526,6 +561,29 @@ $('incomeTab').onclick = () => setType('income');
 $('excludedTab').onclick = () => setType('excluded');
 $('cameraButton').onclick = () => $('cameraInput').click();
 $('imageButton').onclick = () => $('imageInput').click();
+$('recognizeImage').onclick = async () => {
+  if (!selectedImage || !onAndroid()) return;
+  $('recognizeImage').disabled = true;
+  $('ocrStatus').textContent = '正在本机识别图片文字…';
+  try {
+    const bitmap = await createImageBitmap(selectedImage);
+    const scale = Math.min(1, 2200 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const image = canvas.toDataURL('image/jpeg', 0.86).split(',')[1];
+    const result = await window.Capacitor.nativePromise('ImageOcr', 'recognize', { image });
+    const suggestion = JianjiOcr.suggest(result.text);
+    if (suggestion.amount && !$('entryAmount').value) $('entryAmount').value = suggestion.amount.toFixed(2);
+    if (suggestion.merchant && !$('entryNote').value) $('entryNote').value = suggestion.merchant;
+    $('ocrStatus').textContent = suggestion.amount || suggestion.merchant
+      ? `已预填${suggestion.amount ? '金额' : ''}${suggestion.amount && suggestion.merchant ? '和' : ''}${suggestion.merchant ? '商户' : ''}，请核对后保存。`
+      : suggestion.ambiguous ? '图片中有多个不同金额，未自动填写；请手动核对。' : '未找到明确的金额或商户，请手动填写。';
+  } catch (error) { $('ocrStatus').textContent = error.message || '图片识别失败，请手动填写'; }
+  finally { $('recognizeImage').disabled = false; }
+};
 $('cameraInput').onchange = e => selectImage(e.target.files[0]);
 $('imageInput').onchange = e => selectImage(e.target.files[0]);
 $('removePhoto').onclick = clearSelectedImage;
@@ -684,28 +742,99 @@ async function saveBackupFile(name, contents) {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 }
+async function createVerifiedBackup(password) {
+  const snapshot = structuredClone(data);
+  const photos = [];
+  const ids = [...new Set(snapshot.entries.map(entry => entry.photoId).filter(Boolean))];
+  for (const id of ids) {
+    const blob = await photoStore('get', id);
+    if (!blob) throw new Error('有记录图片无法读取，请检查本机图片存储');
+    photos.push({ id, mime: blob.type || 'image/jpeg', base64: JianjiBackup.toBase64(new Uint8Array(await blob.arrayBuffer())) });
+  }
+  const content = await JianjiBackup.createBackup(snapshot, photos, password);
+  if (content.length > 50 * 1024 * 1024) throw new Error('备份超过 50 MB，请先减少账目图片再备份');
+  const checked = await JianjiBackup.readBackup(content, password);
+  if (checked.data.entries.length !== snapshot.entries.length || checked.photos.length !== photos.length) throw new Error('备份校验失败，请重试');
+  return { content, entryCount: snapshot.entries.length, photoCount: photos.length };
+}
+let autoBackupRunning = false;
+function scheduleAutoBackup(delay = 15000) {
+  if (!autoBackupConfigured || !ledgerLoaded) return;
+  clearTimeout(autoBackupTimer);
+  autoBackupTimer = setTimeout(runAutoBackup, delay);
+}
+async function refreshAutoBackupStatus() {
+  if (!onAndroid()) return;
+  const status = await window.Capacitor.nativePromise('AutoBackup', 'status', {});
+  autoBackupConfigured = Boolean(status.configured);
+  lastAutoBackupAt = status.lastSavedAt || '';
+  $('autoBackupStatus').textContent = autoBackupConfigured
+    ? `已开启。${status.lastSavedAt ? `最近写入：${status.lastSavedAt.replace('T', ' ').slice(0, 16)}。` : '尚未写入备份。'}请记住密码，并定期检查目录中的文件。`
+    : status.hasFolder ? '目录已选择。填写上方密码后开启自动备份。' : '尚未设置自动备份目录。';
+  $('disableAutoBackup').hidden = !autoBackupConfigured;
+  if (ledgerLoaded) render();
+}
+async function runAutoBackup() {
+  if (!autoBackupConfigured || !ledgerLoaded) return;
+  if (autoBackupRunning) { scheduleAutoBackup(); return; }
+  autoBackupRunning = true;
+  try {
+    const { password } = await window.Capacitor.nativePromise('AutoBackup', 'getPassword', {});
+    const { content } = await createVerifiedBackup(password);
+    await window.Capacitor.nativePromise('AutoBackup', 'write', { contents: content });
+    await refreshAutoBackupStatus();
+  } catch (error) {
+    $('autoBackupStatus').textContent = `自动备份失败：${error.message || '请检查目录权限'}`;
+  } finally { autoBackupRunning = false; }
+}
+if (onAndroid()) {
+  $('chooseAutoBackupFolder').hidden = false;
+  $('enableAutoBackup').hidden = false;
+}
+$('chooseAutoBackupFolder').onclick = async () => {
+  try { await window.Capacitor.nativePromise('AutoBackup', 'chooseFolder', {}); await refreshAutoBackupStatus(); }
+  catch (error) { $('autoBackupStatus').textContent = error.message || '目录选择失败'; }
+};
+$('enableAutoBackup').onclick = async () => {
+  const password = $('backupPassword').value;
+  if (password.length < 8) return toast('请先填写至少 8 位的备份密码');
+  try {
+    const status = await window.Capacitor.nativePromise('AutoBackup', 'status', {});
+    if (!status.hasFolder) return toast('请先选择自动备份目录');
+    await window.Capacitor.nativePromise('AutoBackup', 'setPassword', { password });
+    $('backupPassword').value = '';
+    await refreshAutoBackupStatus();
+    scheduleAutoBackup(0);
+  } catch (error) { $('autoBackupStatus').textContent = error.message || '无法开启自动备份'; }
+};
+$('disableAutoBackup').onclick = async () => {
+  try {
+    await window.Capacitor.nativePromise('AutoBackup', 'disable', {});
+    autoBackupConfigured = false;
+    clearTimeout(autoBackupTimer);
+    await refreshAutoBackupStatus();
+  } catch (error) { $('autoBackupStatus').textContent = error.message || '无法关闭自动备份'; }
+};
+$('exportCsv').onclick = async () => {
+  $('exportCsv').disabled = true;
+  try {
+    await saveBackupFile(`简记账目-${new Date().toLocaleDateString('en-CA')}.csv`, JianjiCsv.toCsv(data));
+    $('backupStatus').textContent = 'CSV 已保存。表格为明文，请妥善保管。';
+  } catch (error) { $('backupStatus').textContent = error.message || 'CSV 导出失败'; }
+  finally { $('exportCsv').disabled = false; }
+};
 $('exportBackup').onclick = async () => {
   const password = $('backupPassword').value;
   if (password.length < 8) return toast('备份密码至少 8 位');
   $('exportBackup').disabled = true;
   $('backupStatus').textContent = '正在收集账目与图片并加密…';
   try {
-    const photos = [];
-    const ids = [...new Set(data.entries.map(entry => entry.photoId).filter(Boolean))];
-    for (const id of ids) {
-      const blob = await photoStore('get', id);
-      if (!blob) throw new Error('有记录图片无法读取，请检查本机图片存储');
-      photos.push({ id, mime: blob.type || 'image/jpeg', base64: JianjiBackup.toBase64(new Uint8Array(await blob.arrayBuffer())) });
-    }
-    const content = await JianjiBackup.createBackup(data, photos, password);
-    const checked = await JianjiBackup.readBackup(content, password);
-    if (checked.data.entries.length !== data.entries.length || checked.photos.length !== photos.length) throw new Error('备份校验失败，请重试');
-    if (content.length > 50 * 1024 * 1024) throw new Error('备份超过 50 MB，请先减少账目图片再备份');
+    const { content, entryCount, photoCount } = await createVerifiedBackup(password);
     await saveBackupFile(`简记备份-${new Date().toLocaleDateString('en-CA')}.jianji`, content);
     data.lastBackupAt = new Date().toISOString();
     try { await save(); } catch { /* The backup file was saved even if the reminder timestamp could not be persisted. */ }
     render();
-    $('backupStatus').textContent = `备份已保存：${data.entries.length} 笔账目（含最近删除）、${photos.length} 张图片。请妥善保管文件和密码。`;
+    $('backupStatus').textContent = `备份已保存：${entryCount} 笔账目（含最近删除）、${photoCount} 张图片。请妥善保管文件和密码。`;
   } catch (error) { $('backupStatus').textContent = error.message || '备份失败'; }
   finally { $('exportBackup').disabled = false; }
 };
@@ -748,6 +877,8 @@ $('restoreBackup').onclick = async () => {
         data = replacement;
         normalizeData();
         refreshCategoryUI(); refreshAccountUI(); render(); close('backupModal'); toast('账本已恢复');
+        syncReminders().catch(() => toast('账本已恢复，但系统提醒未更新'));
+        scheduleAutoBackup();
         pendingRestore = null;
       } catch (error) {
         if (!committed) for (const id of written) photoStore('delete', id).catch(() => {});
@@ -962,7 +1093,6 @@ async function handleRecordClick(e) {
   render(); toast('已移到最近删除，可在账本设置中恢复');
 }
 document.querySelectorAll('.record-list').forEach(container => container.onclick = handleRecordClick);
-const onAndroid = () => window.Capacitor?.getPlatform?.() === 'android' && Boolean(window.Capacitor.nativePromise);
 const paymentPlugin = (method, args = {}) => window.Capacitor.nativePromise('PaymentNotification', method, args);
 function renderPaymentNotices() {
   const pending = paymentNotices.filter(item => !data.entries.some(entry => entry.paymentNoticeId === item.id));
@@ -1006,18 +1136,64 @@ $('paymentNotices').onclick = async event => {
   catch { toast('暂时无法忽略这条通知'); }
 };
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPaymentNotices(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshReminderStatus(); });
 window.addEventListener('focus', refreshPaymentNotices);
-async function start() {
+let appLockEnabled = false;
+let ledgerLoaded = false;
+function showAppLock(locked) {
+  $('appLockOverlay').hidden = !locked;
+  document.querySelector('main').inert = locked;
+  $('add').inert = locked;
+  document.querySelector('.bottom-nav').inert = locked;
+}
+$('unlockApp').onclick = async () => {
+  $('unlockApp').disabled = true;
+  $('appLockStatus').textContent = '';
+  try {
+    await window.Capacitor.nativePromise('AppLock', 'authenticate', {});
+    showAppLock(false);
+    if (!ledgerLoaded) await loadLedger();
+  } catch (error) { $('appLockStatus').textContent = error.message || '解锁失败，请重试'; }
+  finally { $('unlockApp').disabled = false; }
+};
+$('appLockSetting').onclick = async () => {
+  try {
+    await window.Capacitor.nativePromise('AppLock', 'authenticate', {});
+    await window.Capacitor.nativePromise('AppLock', 'setEnabled', { enabled: !appLockEnabled });
+    appLockEnabled = !appLockEnabled;
+    $('appLockSetting').textContent = appLockEnabled ? '关闭应用锁' : '开启应用锁';
+    toast(appLockEnabled ? '应用锁已开启，下次打开简记时生效' : '应用锁已关闭');
+  } catch (error) { toast(error.message || '应用锁设置失败'); }
+};
+document.addEventListener('visibilitychange', () => { if (document.hidden && appLockEnabled) showAppLock(true); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && autoBackupTimer) scheduleAutoBackup(0); });
+async function loadLedger() {
   try {
     data = await JianjiStore.initialize();
     normalizeData();
+    ledgerLoaded = true;
     refreshCategoryUI();
     refreshAccountUI();
     render();
     switchPage(location.hash.slice(1), false);
     refreshPaymentNotices();
+    if (onAndroid()) window.Capacitor.nativePromise('Reminder', 'status', {}).then(status => { reminderEnabled = Boolean(status.enabled); return syncReminders(); }).catch(() => {});
+    if (onAndroid()) refreshAutoBackupStatus().then(() => {
+      if (autoBackupConfigured) window.Capacitor.nativePromise('AutoBackup', 'status', {}).then(status => { if (!status.lastSavedAt) scheduleAutoBackup(0); }).catch(() => {});
+    }).catch(() => { $('autoBackupStatus').textContent = '自动备份状态无法读取'; });
   } catch (error) {
     document.querySelector('main').innerHTML = `<section class="card"><h2>账本暂时无法打开</h2><p>${escapeHtml(error.message || '数据库读取失败')}</p><p>请保留应用数据，重新打开应用后重试。</p></section>`;
   }
+}
+async function start() {
+  if (!onAndroid()) { showAppLock(false); return loadLedger(); }
+  $('appLockSetting').hidden = false;
+  try {
+    appLockEnabled = Boolean((await window.Capacitor.nativePromise('AppLock', 'status', {})).enabled);
+    $('appLockSetting').textContent = appLockEnabled ? '关闭应用锁' : '开启应用锁';
+    if (appLockEnabled) { showAppLock(true); return; }
+    showAppLock(false);
+    return loadLedger();
+  } catch (error) { $('appLockStatus').textContent = error.message || '无法检查应用锁，请重启应用'; }
 }
 start();

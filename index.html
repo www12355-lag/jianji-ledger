@@ -58,7 +58,7 @@
       </section>
       <section class="card tools-card">
         <div class="cardhead"><h2>账本设置</h2></div>
-        <div class="tool-buttons"><button id="manageAccounts">账户与转账</button><button id="manageCategories">管理分类</button><button id="manageImportRules">导入分类规则</button><button id="openBackup">备份与恢复</button><button id="openTrash">最近删除</button></div>
+        <div class="tool-buttons"><button id="manageAccounts">账户与转账</button><button id="manageCategories">管理分类</button><button id="manageImportRules">导入分类规则</button><button id="openBackup">备份与恢复</button><button id="appLockSetting" hidden>开启应用锁</button><button id="openTrash">最近删除</button></div>
         <div id="backupReminder" class="backup-reminder" hidden></div>
       </section>
       <p class="foot">账本默认保存在本机，可在“备份与恢复”中迁移 · 金额单位：人民币</p>
@@ -114,7 +114,7 @@
       <div id="splitField" hidden><label class="all-months"><input type="checkbox" id="splitEnabled"> 这笔支出分到多个类别</label><div id="splitRows"></div><button type="button" class="quiet-button" id="addSplit" hidden>添加类别</button><p class="import-help" id="splitRemaining" hidden></p></div>
       <label class="field">账户<select id="entryAccount"></select></label>
       <label class="field">备注<input id="entryNote" maxlength="60" placeholder="例如：午餐"></label>
-      <div class="photo-field"><div class="photo-label">图片（选填）</div><div class="photo-actions"><button type="button" id="cameraButton">📷 拍照</button><button type="button" id="imageButton">▧ 选择图片或截图</button></div><input id="cameraInput" type="file" accept="image/*" capture="environment" hidden><input id="imageInput" type="file" accept="image/*" hidden><div class="photo-selection"><img id="photoPreview" alt="所选图片预览" hidden><span id="photoName">可拍摄物品，也可选择相册里的网购截图</span><button type="button" id="removePhoto" aria-label="移除图片">×</button></div><label id="removeStoredPhotoField" class="all-months" hidden><input id="removeStoredPhoto" type="checkbox"> 删除原图片</label></div>
+      <div class="photo-field"><div class="photo-label">图片（选填）</div><div class="photo-actions"><button type="button" id="cameraButton">📷 拍照</button><button type="button" id="imageButton">▧ 选择图片或截图</button></div><input id="cameraInput" type="file" accept="image/*" capture="environment" hidden><input id="imageInput" type="file" accept="image/*" hidden><div class="photo-selection"><img id="photoPreview" alt="所选图片预览" hidden><span id="photoName">可拍摄物品，也可选择相册里的网购截图</span><button type="button" id="removePhoto" aria-label="移除图片">×</button></div><button type="button" class="quiet-button" id="recognizeImage" hidden>识别截图并预填</button><p class="import-help" id="ocrStatus" aria-live="polite"></p><label id="removeStoredPhotoField" class="all-months" hidden><input id="removeStoredPhoto" type="checkbox"> 删除原图片</label></div>
       <button class="primary">保存记录</button>
     </form>
   </div></div>
@@ -162,6 +162,7 @@
   <div class="modalback" id="recurringModal"><div class="modal">
     <div class="modalhead"><h2>周期记账</h2><button class="close" data-close="recurringModal" aria-label="关闭">×</button></div>
     <p class="import-help">到期后在首页提醒，由你确认后才会记入账本。</p>
+    <div id="reminderControls" hidden><button type="button" class="quiet-button" id="toggleReminders">开启系统提醒</button><p id="reminderStatus" class="import-help">系统提醒会在到期前一天约 9 点发出，不会自动记账。</p></div>
     <div id="recurringRules" class="settings-list"></div>
     <form id="recurringForm">
       <div class="seg"><button type="button" id="recurringExpense" class="active">支出</button><button type="button" id="recurringIncome">收入</button></div>
@@ -179,6 +180,13 @@
     <label class="field">备份提醒间隔<select id="backupInterval"><option value="7">每 7 天</option><option value="30">每 30 天</option><option value="90">每 90 天</option></select></label>
     <label class="field">备份密码<input id="backupPassword" type="password" minlength="8" autocomplete="new-password" placeholder="至少 8 位"></label>
     <button class="primary" id="exportBackup">保存加密备份</button>
+    <button class="primary secondary" id="exportCsv">导出 CSV 表格</button>
+    <div class="backup-divider">自动加密备份（安卓）</div>
+    <p class="import-help">选择手机上的目录并设置备份密码。修改账本后，简记会在应用运行期间自动写入加密文件。可选择由网盘同步的目录，将备份文件带到其他设备；在另一台设备上仍需手动选择文件恢复。</p>
+    <button class="primary secondary" id="chooseAutoBackupFolder" hidden>选择自动备份目录</button>
+    <button class="primary secondary" id="enableAutoBackup" hidden>使用上方密码开启自动备份</button>
+    <button class="quiet-button" id="disableAutoBackup" hidden>关闭自动备份</button>
+    <p id="autoBackupStatus" class="import-help" aria-live="polite"></p>
     <div class="backup-divider">从备份恢复</div>
     <div class="file-choice"><button type="button" id="chooseBackupFile">选择备份文件</button><span id="backupFileName">尚未选择文件</span><input id="backupFile" type="file" hidden></div>
     <button class="primary secondary" id="restoreBackup">验证并恢复</button>
@@ -190,9 +198,12 @@
     <div id="trashList" class="settings-list"></div>
   </div></div>
   <div class="toast" id="toast"></div>
+  <div class="app-lock" id="appLockOverlay"><div><h2>简记已锁定</h2><p>使用手机的指纹、面容或屏幕锁继续</p><button id="unlockApp" type="button">解锁简记</button><small id="appLockStatus" aria-live="polite"></small></div></div>
   <script src="bill-import.js"></script>
   <script src="ledger-features.js"></script>
   <script src="backup-tools.js"></script>
+  <script src="csv-export.js"></script>
+  <script src="ocr-tools.js"></script>
   <script src="ledger-store.js"></script>
   <script src="app.js"></script>
 </body>

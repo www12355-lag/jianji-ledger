@@ -18,13 +18,13 @@ public class BackupFilePlugin extends Plugin {
     public void save(PluginCall call) {
         String name = call.getString("name");
         String contents = call.getString("contents");
-        if (name == null || contents == null || !name.endsWith(".jianji")) {
+        if (name == null || contents == null || (!name.endsWith(".jianji") && !name.endsWith(".csv"))) {
             call.reject("备份文件格式不正确");
             return;
         }
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("application/octet-stream");
+        intent.setType(name.endsWith(".csv") ? "text/csv" : "application/octet-stream");
         intent.putExtra(Intent.EXTRA_TITLE, name);
         intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
         startActivityForResult(call, intent, "savedFile");

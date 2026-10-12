@@ -10,6 +10,10 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(BackupFilePlugin.class);
         registerPlugin(LedgerStorePlugin.class);
         registerPlugin(PaymentNotificationPlugin.class);
+        registerPlugin(ImageOcrPlugin.class);
+        registerPlugin(AppLockPlugin.class);
+        registerPlugin(ReminderPlugin.class);
+        registerPlugin(AutoBackupPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

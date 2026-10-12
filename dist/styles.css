@@ -198,6 +198,8 @@ button{cursor:pointer}
 .split-row{display:flex;gap:8px;margin:8px 0}
 .split-row select,.split-row input{min-width:0;border:1px solid #dce3ed;border-radius:9px;background:#fff;padding:9px;color:#172235}
 .split-row select{flex:1}.split-row input{width:100px}.split-row button{border:0;border-radius:8px;background:#edf0f6;color:#708096;padding:0 10px}
+.app-lock{position:fixed;inset:0;z-index:100;background:#16233e;display:flex;align-items:center;justify-content:center;padding:24px;color:#fff;text-align:center}
+.app-lock>div{max-width:320px}.app-lock h2{font-size:26px;margin:0 0 9px}.app-lock p{color:#c9d2e7;line-height:1.5}.app-lock button{margin:16px 0 10px;padding:12px 26px;border:0;border-radius:10px;background:#7784fb;color:#fff;font-weight:700}.app-lock small{display:block;color:#f8c4bd}
 @media(max-width:740px){
   .app{padding:18px 15px 170px}
   .top{margin-bottom:20px}
