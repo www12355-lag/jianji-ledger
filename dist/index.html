@@ -35,12 +35,13 @@
         <div id="templateShortcuts" class="template-shortcuts"></div>
       </section>
       <div class="home-grid">
-        <section class="card">
+        <section class="card" id="budgetCard">
           <div class="cardhead"><h2>分类预算</h2><button class="link" id="setbudget">设置额度</button></div>
+          <p class="feature-hint">给每类支出设月度上限，随时查看还剩多少可花。</p>
           <div id="budgetRemaining" class="budget-remaining" hidden></div>
           <div id="budgets"></div>
         </section>
-        <section class="card">
+        <section class="card" id="recentCard">
           <div class="cardhead"><h2>最近记录</h2><button class="link" id="allRecords">查看全部</button></div>
           <div class="record-list" id="recentRecords"></div>
         </section>
@@ -49,18 +50,21 @@
         <div class="cardhead"><h2>待确认的周期账目</h2><button class="link" id="manageRecurring">管理周期记账</button></div>
         <div id="recurringDue"></div>
       </section>
-      <section class="card planning-card">
+      <section class="card planning-card" id="cashFlowCard">
         <div class="cardhead"><h2>现金流日历</h2><button class="link" id="manageCashFlow">计划收支</button></div>
+        <p class="feature-hint">预测未来 30 天每天的账户余额，提前看到可能的缺口。</p>
         <label class="field">预测账户<select id="cashFlowAccount"></select></label>
         <p id="cashFlowSummary" class="import-help"></p>
         <div id="cashFlowDays" class="cash-flow-days"></div>
       </section>
-      <section class="card planning-card">
+      <section class="card planning-card" id="projectCard">
         <div class="cardhead"><h2>项目标签</h2><button class="link" id="manageProjects">管理项目</button></div>
+        <p class="feature-hint">把旅行、装修等跨类别花销放在同一个项目里。</p>
         <div id="projectSummary"></div>
       </section>
-      <section class="card planning-card">
+      <section class="card planning-card" id="receivableCard">
         <div class="cardhead"><h2>借出与待收款</h2><button class="link" id="manageReceivables">管理待收款</button></div>
+        <p class="feature-hint">记录借给谁、何时收回，以及每次还了多少。</p>
         <div id="receivableSummary"></div>
       </section>
       <section class="card planning-card" id="paymentCard" hidden>
@@ -72,21 +76,37 @@
         <div class="cardhead"><h2>漏记检查</h2><button class="link" id="dismissMissingCheck">本周不提醒</button></div>
         <p id="missingCheckText" class="import-help"></p>
       </section>
-      <section class="card planning-card">
+      <section class="card planning-card" id="annualCard">
         <div class="cardhead"><h2>年度支出计划</h2><button class="link" id="manageAnnualPlans">管理计划</button></div>
+        <p class="feature-hint">为保险、年费、旅行等大额支出提前留出预算。</p>
         <div id="annualPlanSummary"></div>
       </section>
       <section class="card planning-card" id="budgetAlertCard" hidden>
         <div class="cardhead"><h2>预算提醒</h2></div>
         <div id="budgetAlerts"></div>
       </section>
-      <section class="card tools-card">
+      <section class="card tools-card" id="settingsCard">
         <div class="cardhead"><h2>账本设置</h2></div>
+        <p class="feature-hint">管理账户、分类、备份、修改历史与最近删除。</p>
         <div class="tool-buttons"><button id="manageAccounts">账户与对账</button><button id="manageCategories">管理分类</button><button id="manageImportRules">商户分类规则</button><button id="openHistory">修改历史</button><button id="openBackup">备份与恢复</button><button id="appLockSetting" hidden>开启应用锁</button><button id="openTrash">最近删除</button></div>
         <label class="all-months"><input id="missingCheckEnabled" type="checkbox" checked> 超过 3 天没有新账目时提示检查</label>
         <div id="backupReminder" class="backup-reminder" hidden></div>
       </section>
-      <p class="foot">账本默认保存在本机，可在“备份与恢复”中迁移 · 金额单位：人民币</p>
+      <button class="home-feature-link" id="homeFeatures" type="button"><span aria-hidden="true">▦</span><span><b>打开更多功能</b><small>预算、计划、项目和账本设置都在这里</small></span><span aria-hidden="true">›</span></button>
+      <p class="foot">金额单位：人民币 · 账本保存在本机</p>
+    </section>
+
+    <section class="page" id="featuresPage" aria-label="功能" hidden>
+      <div class="page-heading"><div><h1>功能</h1><p>按用途找到需要的工具</p></div></div>
+      <div class="feature-group-grid" aria-label="功能分类">
+        <button type="button" data-feature-group="plan" aria-expanded="false"><span class="feature-glyph" aria-hidden="true">¥</span><b>预算与计划</b><small>钱够不够用</small></button>
+        <button type="button" data-feature-group="daily" aria-expanded="false"><span class="feature-glyph" aria-hidden="true">↔</span><b>日常与往来</b><small>要记的事和待收款</small></button>
+        <button type="button" data-feature-group="manage" aria-expanded="false"><span class="feature-glyph" aria-hidden="true">⚙</span><b>账本管理</b><small>账户、备份与安全</small></button>
+      </div>
+      <p class="feature-guide" id="featureGuide">点一个图标，查看这组功能的用途。</p>
+      <div id="featurePlan" class="feature-panel" hidden><h2>预算与计划</h2><p>安排每月与未来的支出，查看额度和预计余额。</p></div>
+      <div id="featureDaily" class="feature-panel" hidden><h2>日常与往来</h2><p>处理周期账目、项目花销、借还款和漏记提醒。</p></div>
+      <div id="featureManage" class="feature-panel" hidden><h2>账本管理</h2><p>维护账户与分类，查看修改记录，备份账本。</p></div>
     </section>
 
     <section class="page" id="detailsPage" aria-label="明细" hidden>
@@ -127,6 +147,7 @@
       <button class="nav-item active" data-page="home" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg><span>首页</span></button>
       <button class="nav-item" data-page="details"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>明细</span></button>
       <button class="nav-item" data-page="stats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20v-7M10 20V5M16 20v-9M22 20V3M2 21h21"/></svg><span>统计</span></button>
+      <button class="nav-item" data-page="features"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>功能</span></button>
     </div>
   </nav>
 

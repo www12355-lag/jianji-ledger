@@ -204,9 +204,9 @@ function render() {
   loadVisiblePhotos();
 }
 function switchPage(page, updateHash = true) {
-  activePage = ['home', 'details', 'stats'].includes(page) ? page : 'home';
-  for (const name of ['home', 'details', 'stats']) $(name + 'Page').hidden = name !== activePage;
-  $('add').hidden = activePage === 'home';
+  activePage = ['home', 'details', 'stats', 'features'].includes(page) ? page : 'home';
+  for (const name of ['home', 'details', 'stats', 'features']) $(name + 'Page').hidden = name !== activePage;
+  $('add').hidden = activePage === 'home' || activePage === 'features';
   document.querySelectorAll('[data-page]').forEach(button => {
     const selected = button.dataset.page === activePage;
     button.classList.toggle('active', selected);
@@ -361,6 +361,20 @@ function renderMissingCheck() {
 refreshCategoryUI();
 refreshAccountUI();
 refreshProjectUI();
+for (const id of ['budgetCard', 'cashFlowCard', 'annualCard', 'budgetAlertCard']) $('featurePlan').append($(id));
+for (const id of ['planningCard', 'projectCard', 'receivableCard', 'paymentCard', 'missingCheckCard']) $('featureDaily').append($(id));
+$('featureManage').append($('settingsCard'));
+function showFeatureGroup(group) {
+  for (const [name, panel] of [['plan', 'featurePlan'], ['daily', 'featureDaily'], ['manage', 'featureManage']]) $(panel).hidden = name !== group;
+  document.querySelectorAll('[data-feature-group]').forEach(button => {
+    const selected = button.dataset.featureGroup === group;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-expanded', String(selected));
+  });
+  $('featureGuide').hidden = Boolean(group);
+}
+document.querySelectorAll('[data-feature-group]').forEach(button => button.onclick = () => { showFeatureGroup(button.dataset.featureGroup); window.scrollTo(0, 0); });
+$('homeFeatures').onclick = () => switchPage('features');
 for (const id of ['recordSearch', 'recordCategory', 'recordSource', 'recordProject', 'allMonths']) $(id).addEventListener('input', render);
 $('cashFlowAccount').onchange = renderCashFlow;
 $('prev').onclick = () => { view.setMonth(view.getMonth() - 1); render(); };
