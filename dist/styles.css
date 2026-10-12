@@ -164,6 +164,8 @@ button{cursor:pointer}
 .field{display:block;margin:15px 0;font-size:13px;color:#68758a;font-weight:650}
 .field input,.field select{display:block;width:100%;margin-top:7px;border:1px solid #dce3ed;border-radius:11px;padding:12px;color:#172235;background:white;outline:none}
 .field input:focus,.field select:focus{border-color:#7886f6;box-shadow:0 0 0 3px #7886f622}
+.field input[type=date]{-webkit-appearance:none;appearance:none;padding-right:44px;background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20' fill='none'%3E%3Crect x='3' y='5' width='14' height='12' rx='2' stroke='%237687A2' stroke-width='1.6'/%3E%3Cpath d='M6.5 3v4M13.5 3v4M3 9h14' stroke='%237687A2' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;background-size:18px 18px;cursor:pointer}
+.field input[type=date]::-webkit-calendar-picker-indicator{opacity:0;width:22px;margin:0;cursor:pointer}
 .primary{border:0;background:#6776f5;color:white;border-radius:11px;padding:13px 18px;font-weight:700;width:100%;margin-top:10px}
 .primary:disabled{background:#b9c1dc;cursor:not-allowed}
 .import-modal{width:min(100%,560px)}
@@ -212,6 +214,7 @@ button{cursor:pointer}
 .split-row{display:flex;gap:8px;margin:8px 0}
 .split-row select,.split-row input{min-width:0;border:1px solid #dce3ed;border-radius:9px;background:#fff;padding:9px;color:#172235}
 .split-row select{flex:1}.split-row input{width:100px}.split-row button{border:0;border-radius:8px;background:#edf0f6;color:#708096;padding:0 10px}
+.field select,.detail-search select,.split-row select,.import-item-main select{-webkit-appearance:none;appearance:none;padding-right:42px;background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='m5 7.5 5 5 5-5' stroke='%237687A2' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;background-size:18px 18px;cursor:pointer}
 .app-lock{position:fixed;inset:0;z-index:100;background:#16233e;display:flex;align-items:center;justify-content:center;padding:24px;color:#fff;text-align:center}
 .app-lock>div{max-width:320px}.app-lock h2{font-size:26px;margin:0 0 9px}.app-lock p{color:#c9d2e7;line-height:1.5}.app-lock button{margin:16px 0 10px;padding:12px 26px;border:0;border-radius:10px;background:#7784fb;color:#fff;font-weight:700}.app-lock small{display:block;color:#f8c4bd}
 .cash-flow-days{max-height:350px;overflow:auto;border-top:1px solid #eef1f6}
