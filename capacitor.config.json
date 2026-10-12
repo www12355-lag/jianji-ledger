@@ -1,5 +1,12 @@
 {
   "appId": "com.jianji.ledger",
   "appName": "简记",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "native",
+      "initialViewportFitValueHint": "contain",
+      "style": "LIGHT"
+    }
+  }
 }
