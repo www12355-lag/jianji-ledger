@@ -24,7 +24,7 @@
         <div class="balance" id="balance">¥ 0.00</div>
         <div class="sub">
           <div><span>本月收入</span><b id="income">¥ 0.00</b></div>
-          <div><span>本月支出</span><b id="expense">¥ 0.00</b></div>
+          <div><span>本月净支出</span><b id="expense">¥ 0.00</b></div>
         </div>
         <button class="hero-action" id="heroAdd" type="button">＋ 记一笔</button>
       </section>
@@ -35,6 +35,7 @@
       <div class="home-grid">
         <section class="card">
           <div class="cardhead"><h2>分类预算</h2><button class="link" id="setbudget">设置额度</button></div>
+          <div id="budgetRemaining" class="budget-remaining" hidden></div>
           <div id="budgets"></div>
         </section>
         <section class="card">
@@ -45,6 +46,11 @@
       <section class="card planning-card" id="planningCard">
         <div class="cardhead"><h2>待确认的周期账目</h2><button class="link" id="manageRecurring">管理周期记账</button></div>
         <div id="recurringDue"></div>
+      </section>
+      <section class="card planning-card" id="paymentCard" hidden>
+        <div class="cardhead"><h2>支付通知待确认</h2><button class="link" id="paymentSettings">开启通知读取</button></div>
+        <p class="import-help" id="paymentStatus">开启后，简记会在本机识别微信和支付宝的支付通知，确认后才会入账。</p>
+        <div id="paymentNotices" class="settings-list"></div>
       </section>
       <section class="card planning-card" id="budgetAlertCard" hidden>
         <div class="cardhead"><h2>预算提醒</h2></div>
@@ -63,7 +69,7 @@
       <button class="import-open" id="openImport">导入支付宝 / 微信账单</button>
       <div class="filters" aria-label="记录筛选">
         <button class="filter active" data-filter="all" aria-pressed="true">全部</button>
-        <button class="filter" data-filter="expense" aria-pressed="false">支出</button>
+        <button class="filter" data-filter="expense" aria-pressed="false">支出/退款</button>
         <button class="filter" data-filter="income" aria-pressed="false">收入</button>
         <button class="filter" data-filter="excluded" aria-pressed="false">不计收支</button>
       </div>
@@ -80,11 +86,12 @@
       <div class="page-heading"><div><h1>收支统计</h1><p>看看钱花在了哪里</p></div></div>
       <div class="stat-grid">
         <section class="stat-card"><span>本月收入</span><strong id="statsIncome">¥ 0.00</strong></section>
-        <section class="stat-card"><span>本月支出</span><strong id="statsExpense">¥ 0.00</strong></section>
+        <section class="stat-card"><span>本月净支出</span><strong id="statsExpense">¥ 0.00</strong></section>
         <section class="stat-card"><span>本月结余</span><strong id="statsBalance">¥ 0.00</strong></section>
       </div>
       <section class="card stats-card"><div class="cardhead"><h2>支出分类</h2></div><div id="categoryStats"></div></section>
-      <section class="card stats-card"><div class="cardhead"><h2>近 6 个月</h2><span class="chart-legend"><i class="legend-income"></i>收入 <i class="legend-expense"></i>支出</span></div><div id="trendStats"></div></section>
+      <section class="card stats-card"><div class="cardhead"><h2>近 6 个月</h2><span class="chart-legend"><i class="legend-income"></i>收入 <i class="legend-expense"></i>净支出</span></div><div id="trendStats"></div></section>
+      <section class="card stats-card"><div class="cardhead"><h2>月末回顾</h2></div><div id="monthlyReview"></div></section>
     </section>
   </main>
 
@@ -104,11 +111,17 @@
       <label class="field">金额<input id="entryAmount" type="number" min="0.01" step="0.01" placeholder="0.00" required></label>
       <label class="field">日期<input id="entryDate" type="date" required></label>
       <label class="field" id="categoryField">类别<select id="entryCategory"></select></label>
+      <div id="splitField" hidden><label class="all-months"><input type="checkbox" id="splitEnabled"> 这笔支出分到多个类别</label><div id="splitRows"></div><button type="button" class="quiet-button" id="addSplit" hidden>添加类别</button><p class="import-help" id="splitRemaining" hidden></p></div>
       <label class="field">账户<select id="entryAccount"></select></label>
       <label class="field">备注<input id="entryNote" maxlength="60" placeholder="例如：午餐"></label>
       <div class="photo-field"><div class="photo-label">图片（选填）</div><div class="photo-actions"><button type="button" id="cameraButton">📷 拍照</button><button type="button" id="imageButton">▧ 选择图片或截图</button></div><input id="cameraInput" type="file" accept="image/*" capture="environment" hidden><input id="imageInput" type="file" accept="image/*" hidden><div class="photo-selection"><img id="photoPreview" alt="所选图片预览" hidden><span id="photoName">可拍摄物品，也可选择相册里的网购截图</span><button type="button" id="removePhoto" aria-label="移除图片">×</button></div><label id="removeStoredPhotoField" class="all-months" hidden><input id="removeStoredPhoto" type="checkbox"> 删除原图片</label></div>
       <button class="primary">保存记录</button>
     </form>
+  </div></div>
+  <div class="modalback" id="refundModal"><div class="modal">
+    <div class="modalhead"><h2 id="refundTitle">记录退款</h2><button class="close" data-close="refundModal" aria-label="关闭">×</button></div>
+    <p class="import-help" id="refundOriginal"></p>
+    <form id="refundForm"><label class="field">退款金额<input id="refundAmount" type="number" min="0.01" step="0.01" required></label><label class="field">退款日期<input id="refundDate" type="date" required></label><label class="field">退回类别<select id="refundCategory"></select></label><label class="field">退回账户<select id="refundAccount"></select></label><label class="field">备注<input id="refundNote" maxlength="60" placeholder="例如：商品退货"></label><p class="import-help" id="refundAvailable"></p><button class="primary">保存退款</button></form>
   </div></div>
   <div class="modalback" id="budgetModal"><div class="modal">
     <div class="modalhead"><h2>设置月度预算</h2><button class="close" data-close="budgetModal" aria-label="关闭">×</button></div>

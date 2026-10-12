@@ -17,6 +17,8 @@ let previewUrl = null;
 let visibleImageUrls = [];
 let pendingImport = [];
 let importFilter = 'all';
+let paymentDraftId = null;
+let paymentNotices = [];
 let data = { entries: [], budgets: {}, customCategories: [], recurring: [], recurringAcknowledged: {}, accounts: [], importRules: [], lastBackupAt: '' };
 function normalizeData() {
   if (!Array.isArray(data.entries)) data.entries = [];
@@ -32,7 +34,7 @@ function normalizeData() {
 const liveEntries = () => data.entries.filter(entry => !entry.deletedAt);
 const refreshCats = () => { cats = [...baseCats, ...data.customCategories.map(item => item.name)]; };
 refreshCats();
-const money = n => '¥ ' + Number(n || 0).toFixed(2);
+const money = n => `${Number(n) < 0 ? '−' : ''}¥ ${Math.abs(Number(n || 0)).toFixed(2)}`;
 const key = () => `${view.getFullYear()}-${String(view.getMonth() + 1).padStart(2, '0')}`;
 let pendingWrites = Promise.resolve();
 const save = () => {
@@ -80,13 +82,13 @@ async function loadVisiblePhotos() {
 }
 function renderRecordList(id, list, emptyText) {
   const container = $(id);
-  container.innerHTML = list.map(e => `<div class="record"><div class="icon ${toneClass(e.type === 'expense' ? e.category : e.type)}">${iconMarkup(e.type === 'expense' ? e.category : e.type)}</div><div class="recordtext"><b></b><small>${escapeHtml(e.date)} · ${escapeHtml(e.type === 'income' ? '收入' : e.type === 'excluded' ? '不计收支' : e.category)}${e.source ? ' · ' + escapeHtml(e.source) : ''}</small></div>${e.photoId ? `<img class="record-photo" data-photo-id="${escapeHtml(e.photoId)}" alt="记录图片" hidden>` : ''}<div class="amount ${e.type === 'income' ? 'income' : e.type === 'excluded' ? 'excluded' : ''}">${e.type === 'income' ? '+' : e.type === 'excluded' ? '' : '−'}${money(e.amount)}</div><div class="actions"><button data-edit="${escapeHtml(e.id)}" aria-label="编辑记录">编辑</button><button data-delete="${escapeHtml(e.id)}" aria-label="删除记录">×</button></div></div>`).join('') || `<div class="empty">${emptyText}</div>`;
+  container.innerHTML = list.map(e => `<div class="record"><div class="icon ${toneClass(e.type === 'expense' ? e.category : e.type === 'refund' ? 'income' : e.type)}">${iconMarkup(e.type === 'expense' ? e.category : e.type === 'refund' ? 'income' : e.type)}</div><div class="recordtext"><b></b><small></small></div>${e.photoId ? `<img class="record-photo" data-photo-id="${escapeHtml(e.photoId)}" alt="记录图片" hidden>` : ''}<div class="amount ${e.type === 'income' || e.type === 'refund' ? 'income' : e.type === 'excluded' ? 'excluded' : ''}">${e.type === 'income' || e.type === 'refund' ? '+' : e.type === 'excluded' ? '' : '−'}${money(e.amount)}</div><div class="actions">${e.type === 'expense' ? `<button data-refund="${escapeHtml(e.id)}" aria-label="为这笔支出记退款">退款</button>` : ''}<button data-edit="${escapeHtml(e.id)}" aria-label="编辑记录">编辑</button><button data-delete="${escapeHtml(e.id)}" aria-label="删除记录">×</button></div></div>`).join('') || `<div class="empty">${emptyText}</div>`;
   [...container.querySelectorAll('.record')].forEach((row, index) => {
     const entry = list[index];
-    row.querySelector('b').textContent = entry.note || (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '月度收入' : entry.category);
+    row.querySelector('b').textContent = entry.note || (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '月度收入' : entry.type === 'refund' ? '退款' : Array.isArray(entry.splits) && entry.splits.length ? '多类别支出' : entry.category);
     const accountName = id => data.accounts.find(account => account.id === id)?.name || '未知账户';
     const accountText = entry.transferFrom ? ` · ${accountName(entry.transferFrom)} → ${accountName(entry.transferTo)}` : entry.accountId ? ` · ${accountName(entry.accountId)}` : '';
-    row.querySelector('small').textContent = entry.date + ' · ' + (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '收入' : entry.type === 'excluded' ? '不计收支' : entry.category) + (entry.source ? ` · ${entry.source}` : '') + accountText;
+    row.querySelector('small').textContent = entry.date + ' · ' + (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '收入' : entry.type === 'excluded' ? '不计收支' : entry.type === 'refund' ? `${entry.category}退款` : Array.isArray(entry.splits) && entry.splits.length ? entry.splits.map(part => `${part.category}${money(part.amount)}`).join('、') : entry.category) + (entry.source ? ` · ${entry.source}` : '') + accountText;
   });
 }
 function renderStats(list, income, expense) {
@@ -95,9 +97,9 @@ function renderStats(list, income, expense) {
   $('statsBalance').textContent = money(income - expense);
   const categoryTotals = cats.map(category => ({
     category,
-    total: list.filter(e => e.type === 'expense' && e.category === category).reduce((sum, e) => sum + Number(e.amount), 0)
+    total: list.reduce((sum, entry) => sum + JianjiFeatures.categoryNet(entry, category), 0)
   })).filter(item => item.total > 0).sort((a, b) => b.total - a.total);
-  $('categoryStats').innerHTML = categoryTotals.map(item => `<div class="category-row"><div class="rowtop"><b class="category-name"><span class="category-mini ${toneClass(item.category)}">${iconMarkup(item.category)}</span>${escapeHtml(item.category)}</b><span>${money(item.total)}</span></div><small>占本月支出 ${Math.round(item.total / expense * 100)}%</small><div class="track"><div class="fill" style="width:${Math.min(100, item.total / expense * 100)}%"></div></div></div>`).join('') || '<div class="empty">本月还没有支出记录</div>';
+  $('categoryStats').innerHTML = categoryTotals.map(item => `<div class="category-row"><div class="rowtop"><b class="category-name"><span class="category-mini ${toneClass(item.category)}">${iconMarkup(item.category)}</span>${escapeHtml(item.category)}</b><span>${money(item.total)}</span></div><small>占本月净支出 ${expense > 0 ? Math.round(item.total / expense * 100) : 0}%</small><div class="track"><div class="fill" style="width:${expense > 0 ? Math.min(100, item.total / expense * 100) : 0}%"></div></div></div>`).join('') || '<div class="empty">本月还没有净支出记录</div>';
   const months = Array.from({ length: 6 }, (_, index) => {
     const date = new Date(view.getFullYear(), view.getMonth() - 5 + index, 1);
     const ym = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -105,11 +107,17 @@ function renderStats(list, income, expense) {
     return {
       label: `${date.getMonth() + 1}月`,
       income: entries.filter(e => e.type === 'income').reduce((sum, e) => sum + Number(e.amount), 0),
-      expense: entries.filter(e => e.type === 'expense').reduce((sum, e) => sum + Number(e.amount), 0)
+      expense: JianjiFeatures.netExpense(entries)
     };
   });
-  const maximum = Math.max(...months.flatMap(month => [month.income, month.expense]));
-  $('trendStats').innerHTML = maximum > 0 ? `<div class="trend-chart">${months.map(month => `<div class="trend-col" aria-label="${month.label}收入${money(month.income)}，支出${money(month.expense)}"><div class="trend-bars"><div class="trend-bar income" style="height:${month.income / maximum * 100}%"></div><div class="trend-bar expense" style="height:${month.expense / maximum * 100}%"></div></div><label>${month.label}</label></div>`).join('')}</div>` : '<div class="empty">近 6 个月还没有收支记录</div>';
+  const maximum = Math.max(0, ...months.flatMap(month => [month.income, month.expense]));
+  $('trendStats').innerHTML = maximum > 0 ? `<div class="trend-chart">${months.map(month => `<div class="trend-col" aria-label="${month.label}收入${money(month.income)}，净支出${money(month.expense)}"><div class="trend-bars"><div class="trend-bar income" style="height:${Math.max(0, month.income) / maximum * 100}%"></div><div class="trend-bar expense" style="height:${Math.max(0, month.expense) / maximum * 100}%"></div></div><label>${month.label}</label></div>`).join('')}</div>` : '<div class="empty">近 6 个月还没有收支记录</div>';
+  const previousKey = `${new Date(view.getFullYear(), view.getMonth() - 1, 1).getFullYear()}-${String(new Date(view.getFullYear(), view.getMonth() - 1, 1).getMonth() + 1).padStart(2, '0')}`;
+  const previousExpense = JianjiFeatures.netExpense(liveEntries().filter(entry => entry.date?.startsWith(previousKey)));
+  const difference = expense - previousExpense;
+  const top = categoryTotals[0];
+  const over = cats.filter(category => Number((data.budgets[key()] || {})[category]) > 0 && list.reduce((sum, entry) => sum + JianjiFeatures.categoryNet(entry, category), 0) > Number(data.budgets[key()][category]));
+  $('monthlyReview').innerHTML = `<div class="review-grid"><div><small>本月净支出</small><b>${money(expense)}</b></div><div><small>比上月</small><b>${previousExpense === 0 ? '上月暂无数据' : `${difference >= 0 ? '多' : '少'} ${money(Math.abs(difference))}`}</b></div><div><small>最多的类别</small><b>${top ? `${escapeHtml(top.category)} ${money(top.total)}` : '暂无'}</b></div><div><small>超预算类别</small><b>${over.length ? over.map(escapeHtml).join('、') : '无'}</b></div></div>`;
 }
 function renderPlanning(list, budgets) {
   const due = JianjiFeatures.recurringOccurrences(data.recurring, data.recurringAcknowledged);
@@ -117,7 +125,7 @@ function renderPlanning(list, budgets) {
   const alerts = cats.flatMap(category => {
     const limit = Number(budgets[category]);
     if (!Number.isFinite(limit) || limit <= 0) return [];
-    const used = list.filter(entry => entry.type === 'expense' && entry.category === category).reduce((sum, entry) => sum + Number(entry.amount), 0);
+    const used = list.reduce((sum, entry) => sum + JianjiFeatures.categoryNet(entry, category), 0);
     return used >= limit * 0.8 ? [{ category, used, limit }] : [];
   });
   $('budgetAlertCard').hidden = alerts.length === 0;
@@ -134,7 +142,7 @@ function render() {
   const list = liveEntries().filter(e => e.date && e.date.startsWith(ym)).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
   $('month').textContent = `${view.getFullYear()}年${view.getMonth() + 1}月`;
   const income = list.filter(e => e.type === 'income').reduce((sum, e) => sum + Number(e.amount), 0);
-  const expense = list.filter(e => e.type === 'expense').reduce((sum, e) => sum + Number(e.amount), 0);
+  const expense = JianjiFeatures.netExpense(list);
   $('income').textContent = money(income);
   $('expense').textContent = money(expense);
   $('balance').textContent = money(income - expense);
@@ -142,18 +150,29 @@ function render() {
   const source = $('recordSource').value;
   const category = $('recordCategory').value;
   const detailList = $('allMonths').checked ? liveEntries().sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id) : list;
-  const filtered = detailList.filter(e => (detailFilter === 'all' || e.type === detailFilter)
+  const filtered = detailList.filter(e => (detailFilter === 'all' || e.type === detailFilter || detailFilter === 'expense' && e.type === 'refund')
     && (!search || `${e.note || ''} ${e.source || ''} ${e.category || ''}`.toLocaleLowerCase().includes(search))
     && (!source || (source === 'manual' ? !e.source : e.source === source))
-    && (!category || e.category === category));
+    && (!category || e.category === category || e.type === 'expense' && JianjiFeatures.expenseParts(e).some(part => part.category === category)));
   $('count').textContent = `共 ${filtered.length} 笔`;
   const budgets = data.budgets[ym] || {};
   $('budgets').innerHTML = cats.filter(c => Number(budgets[c]) > 0).map(c => {
-    const used = list.filter(e => e.type === 'expense' && e.category === c).reduce((sum, e) => sum + Number(e.amount), 0);
+    const used = list.reduce((sum, entry) => sum + JianjiFeatures.categoryNet(entry, c), 0);
     const limit = Number(budgets[c]);
     const percent = used / limit * 100;
-    return `<div class="budgetrow"><div class="rowtop"><b class="category-name"><span class="category-mini ${toneClass(c)}">${iconMarkup(c)}</span>${escapeHtml(c)}</b><span>${money(used)} <span class="muted">/ ${money(limit)}</span></span></div><div class="track"><div class="fill ${percent >= 100 ? 'over' : percent >= 80 ? 'warn' : ''}" style="width:${Math.min(100, percent)}%"></div></div></div>`;
+    return `<div class="budgetrow"><div class="rowtop"><b class="category-name"><span class="category-mini ${toneClass(c)}">${iconMarkup(c)}</span>${escapeHtml(c)}</b><span>${money(used)} <span class="muted">/ ${money(limit)}</span></span></div><div class="track"><div class="fill ${percent >= 100 ? 'over' : percent >= 80 ? 'warn' : ''}" style="width:${Math.max(0, Math.min(100, percent))}%"></div></div><small>还可花 ${money(Math.max(0, limit - used))}${used > limit ? ` · 已超 ${money(used - limit)}` : ''}</small></div>`;
   }).join('') || '<div class="empty">还没有设置预算，点右上角开始设置</div>';
+  const budgeted = cats.filter(category => Number(budgets[category]) > 0);
+  $('budgetRemaining').hidden = budgeted.length === 0;
+  if (budgeted.length) {
+    const balances = budgeted.map(category => Number(budgets[category]) - list.reduce((used, entry) => used + JianjiFeatures.categoryNet(entry, category), 0));
+    const left = balances.reduce((sum, balance) => sum + Math.max(0, balance), 0);
+    const over = balances.reduce((sum, balance) => sum + Math.max(0, -balance), 0);
+    const today = new Date();
+    const currentMonth = view.getFullYear() === today.getFullYear() && view.getMonth() === today.getMonth();
+    const days = currentMonth ? new Date(view.getFullYear(), view.getMonth() + 1, 0).getDate() - today.getDate() + 1 : 0;
+    $('budgetRemaining').innerHTML = `<b>各类可用额度合计 ${money(left)}</b><small>${over > 0 ? `其他类别已超 ${money(over)}。` : ''}${currentMonth ? `本月剩余 ${days} 天，日均参考 ${money(left / days)}。` : ''}仅计算已设预算的类别。</small>`;
+  }
   renderPlanning(list, budgets);
   renderRecordList('recentRecords', list.slice(0, 3), '这个月还没有记录，点「记一笔」开始');
   renderRecordList('records', filtered, filtered.length ? '' : detailFilter === 'all' ? '这个月还没有记录，点「记一笔」开始' : '这个月没有这类记录');
@@ -181,7 +200,36 @@ function setType(type) {
   $('incomeTab').classList.toggle('active', type === 'income');
   $('excludedTab').classList.toggle('active', type === 'excluded');
   $('categoryField').style.display = type === 'expense' ? 'block' : 'none';
+  $('splitField').hidden = type !== 'expense';
+  if (type === 'expense') updateSplitUI();
 }
+function splitRows() {
+  return [...$('splitRows').querySelectorAll('.split-row')].map(row => ({ category: row.querySelector('select').value, amount: Number(row.querySelector('input').value) }));
+}
+function renderSplitRows(parts = []) {
+  $('splitRows').innerHTML = parts.map((part, index) => `<div class="split-row"><select aria-label="第${index + 1}个类别">${cats.map(category => `<option value="${escapeHtml(category)}"${category === part.category ? ' selected' : ''}>${escapeHtml(category)}</option>`).join('')}</select><input type="number" min="0.01" step="0.01" value="${Number(part.amount) || ''}" placeholder="金额" aria-label="第${index + 1}个类别金额"><button type="button" data-split-remove="${index}" aria-label="移除类别">×</button></div>`).join('');
+  updateSplitRemaining();
+}
+function updateSplitRemaining() {
+  const remaining = Math.round(Number($('entryAmount').value || 0) * 100) - splitRows().reduce((sum, part) => sum + Math.round(part.amount * 100), 0);
+  $('splitRemaining').textContent = `尚未分配 ${money(remaining / 100)}；各类别金额之和须等于总金额。`;
+}
+function updateSplitUI() {
+  const enabled = $('splitEnabled').checked && entryType === 'expense';
+  $('categoryField').style.display = entryType === 'expense' && !enabled ? 'block' : 'none';
+  $('splitRows').hidden = !enabled;
+  $('addSplit').hidden = !enabled;
+  $('splitRemaining').hidden = !enabled;
+  if (enabled && !$('splitRows').children.length) renderSplitRows([{ category: cats[0], amount: '' }, { category: cats[1] || cats[0], amount: '' }]);
+}
+$('splitEnabled').onchange = updateSplitUI;
+$('addSplit').onclick = () => renderSplitRows([...splitRows(), { category: cats.find(category => !splitRows().some(part => part.category === category)) || cats[0], amount: '' }]);
+$('splitRows').onclick = event => {
+  const button = event.target.closest('[data-split-remove]');
+  if (button) renderSplitRows(splitRows().filter((_, index) => index !== Number(button.dataset.splitRemove)));
+};
+$('splitRows').oninput = updateSplitRemaining;
+$('entryAmount').oninput = updateSplitRemaining;
 function clearSelectedImage() {
   selectedImage = null;
   if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -250,8 +298,10 @@ document.querySelectorAll('[data-filter]').forEach(button => button.onclick = ()
 window.addEventListener('hashchange', () => switchPage(location.hash.slice(1), false));
 function openNewEntry(category = '餐饮') {
   editingId = null;
+  paymentDraftId = null;
   $('entryModalTitle').textContent = '记一笔';
   $('entryForm').reset();
+  $('splitRows').replaceChildren();
   $('removeStoredPhotoField').hidden = true;
   $('entryDate').value = new Date().toLocaleDateString('en-CA');
   clearSelectedImage();
@@ -311,7 +361,10 @@ $('customCategoryList').onclick = async event => {
     const name = renameButton.parentElement.querySelector('input').value.trim();
     if (!name || (name !== item.name && cats.includes(name)) || ['__proto__', 'constructor', 'prototype'].includes(name)) return toast('分类名称不可用或已存在');
     const before = JSON.stringify(data);
-    for (const entry of data.entries) if (entry.category === item.name) entry.category = name;
+    for (const entry of data.entries) {
+      if (entry.category === item.name) entry.category = name;
+      for (const part of entry.splits || []) if (part.category === item.name) part.category = name;
+    }
     for (const rule of data.recurring) if (rule.category === item.name) rule.category = name;
     for (const rule of data.importRules) if (rule.category === item.name) rule.category = name;
     for (const budget of Object.values(data.budgets)) if (Object.hasOwn(budget, item.name)) { budget[name] = budget[item.name]; delete budget[item.name]; }
@@ -319,7 +372,7 @@ $('customCategoryList').onclick = async event => {
     try { await save(); } catch { data = JSON.parse(before); return toast('分类改名失败'); }
     refreshCategoryUI(); renderCustomCategories(); render(); toast('分类已改名');
   } else {
-    if (data.entries.some(entry => entry.category === item.name) || data.recurring.some(rule => rule.category === item.name) || data.importRules.some(rule => rule.category === item.name) || Object.values(data.budgets).some(budget => Number(budget[item.name]) > 0)) return toast('此分类仍有账目、周期规则、导入规则或预算，请先调整它们');
+    if (data.entries.some(entry => entry.category === item.name || entry.splits?.some(part => part.category === item.name)) || data.recurring.some(rule => rule.category === item.name) || data.importRules.some(rule => rule.category === item.name) || Object.values(data.budgets).some(budget => Number(budget[item.name]) > 0)) return toast('此分类仍有账目、周期规则、导入规则或预算，请先调整它们');
     data.customCategories.splice(index, 1);
     try { await save(); } catch { data.customCategories.splice(index, 0, item); return toast('分类删除失败'); }
     refreshCategoryUI(); renderCustomCategories(); render(); toast('分类已删除');
@@ -718,11 +771,16 @@ $('trashList').onclick = async event => {
   const entry = data.entries.find(item => String(item.id) === id && item.deletedAt);
   if (!entry) return;
   if (restore) {
+    if (entry.type === 'refund') {
+      const original = data.entries.find(item => String(item.id) === String(entry.refundOf) && item.type === 'expense' && !item.deletedAt);
+      if (!original || Math.round(entry.amount * 100) > Math.round(JianjiFeatures.refundAvailable(original, entry.category, data.entries, entry.id) * 100)) return toast('原支出不存在或可退金额不足，无法恢复');
+    }
     const old = entry.deletedAt;
     delete entry.deletedAt;
     try { await save(); } catch { entry.deletedAt = old; return toast('恢复失败，请检查存储空间'); }
     toast('账目已恢复');
   } else {
+    if (entry.type === 'expense' && data.entries.some(item => item.type === 'refund' && String(item.refundOf) === String(entry.id))) return toast('请先永久删除关联退款');
     if (!confirm('永久删除后无法从最近删除恢复，确定继续吗？')) return;
     const old = data.entries;
     data.entries = old.filter(item => item !== entry);
@@ -741,6 +799,27 @@ $('entryForm').onsubmit = async e => {
   const original = editingId === null ? null : data.entries.find(item => String(item.id) === editingId);
   if (editingId !== null && !original) return toast('记录不存在，请重新打开');
   const entry = { ...original, id: original?.id ?? Date.now() + Math.random(), type: entryType, amount, date: $('entryDate').value, category: entryType === 'expense' ? $('entryCategory').value : '', note: $('entryNote').value.trim(), accountId: $('entryAccount').value || '' };
+  if (entryType === 'expense' && $('splitEnabled').checked) {
+    const parts = splitRows();
+    if (!JianjiFeatures.validSplits(amount, parts, cats)) return toast('请让各类别金额相加等于总金额，且类别不重复');
+    entry.splits = parts;
+    entry.category = parts[0].category;
+  } else delete entry.splits;
+  if (original?.type === 'expense') {
+    const linked = data.entries.filter(item => item.type === 'refund' && !item.deletedAt && String(item.refundOf) === String(original.id));
+    if (linked.length && entry.type !== 'expense') return toast('已有退款关联，不能改为其他收支类型');
+    for (const category of new Set(linked.map(item => item.category))) {
+      const allowed = JianjiFeatures.expenseParts(entry).find(part => part.category === category)?.amount || 0;
+      const returned = linked.filter(item => item.category === category).reduce((sum, item) => sum + Number(item.amount), 0);
+      if (Math.round(returned * 100) > Math.round(allowed * 100)) return toast('修改后该类别的退款将超过原支出，请先调整退款');
+    }
+  }
+  const paymentNotice = paymentDraftId ? paymentNotices.find(item => item.id === paymentDraftId) : null;
+  if (paymentNotice && !original) {
+    entry.source = paymentNotice.source;
+    entry.paymentNoticeId = paymentNotice.id;
+    entry.paymentReceivedAt = paymentNotice.receivedAt;
+  }
   if ($('removeStoredPhoto').checked) delete entry.photoId;
   if (selectedImage) {
     entry.photoId = `${entry.id}-${Date.now()}`;
@@ -761,6 +840,11 @@ $('entryForm').onsubmit = async e => {
     return;
   }
   if (original?.photoId && original.photoId !== entry.photoId) photoStore('delete', original.photoId).catch(() => {});
+  if (paymentNotice) {
+    try { await paymentPlugin('dismiss', { id: paymentNotice.id }); } catch { /* Saved entries still hide their matching notice. */ }
+    paymentDraftId = null;
+    refreshPaymentNotices();
+  }
   close('entryModal');
   clearSelectedImage();
   render();
@@ -775,12 +859,66 @@ $('budgetForm').onsubmit = async e => {
   try { await save(); } catch { return toast('预算保存失败'); }
   close('budgetModal'); render(); toast('预算已更新');
 };
+let refundOriginalId = null;
+let editingRefundId = null;
+function updateRefundAvailable() {
+  const original = data.entries.find(item => String(item.id) === refundOriginalId);
+  if (!original) return;
+  const available = JianjiFeatures.refundAvailable(original, $('refundCategory').value, data.entries, editingRefundId);
+  $('refundAvailable').textContent = `此类别还可退 ${money(available)}`;
+}
+function openRefund(original, refund = null) {
+  refundOriginalId = String(original.id);
+  editingRefundId = refund ? String(refund.id) : null;
+  $('refundForm').reset();
+  $('refundTitle').textContent = refund ? '编辑退款' : '记录退款';
+  $('refundOriginal').textContent = `关联原支出：${original.note || '未命名支出'} · ${money(original.amount)} · ${original.date}`;
+  const parts = JianjiFeatures.expenseParts(original);
+  $('refundCategory').innerHTML = parts.map(part => `<option value="${escapeHtml(part.category)}">${escapeHtml(part.category)}</option>`).join('');
+  $('refundAccount').innerHTML = '<option value="">未指定账户</option>' + data.accounts.map(account => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.name)}</option>`).join('');
+  $('refundCategory').value = refund?.category || parts.find(part => JianjiFeatures.refundAvailable(original, part.category, data.entries) > 0)?.category || parts[0]?.category;
+  $('refundAmount').value = refund?.amount || '';
+  $('refundDate').value = refund?.date || new Date().toLocaleDateString('en-CA');
+  $('refundAccount').value = refund?.accountId || original.accountId || '';
+  $('refundNote').value = refund?.note || '';
+  updateRefundAvailable();
+  open('refundModal');
+}
+$('refundCategory').onchange = updateRefundAvailable;
+$('refundForm').onsubmit = async event => {
+  event.preventDefault();
+  const original = data.entries.find(item => String(item.id) === refundOriginalId && item.type === 'expense' && !item.deletedAt);
+  if (!original) return toast('原支出已不存在');
+  const amount = Number($('refundAmount').value);
+  const category = $('refundCategory').value;
+  if (!Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) > Math.round(JianjiFeatures.refundAvailable(original, category, data.entries, editingRefundId) * 100)) return toast('退款金额超过此类别的剩余可退金额');
+  const previous = editingRefundId ? data.entries.find(item => String(item.id) === editingRefundId && item.type === 'refund') : null;
+  const entry = { ...previous, id: previous?.id ?? Date.now() + Math.random(), type: 'refund', refundOf: original.id, amount, date: $('refundDate').value, category, accountId: $('refundAccount').value, note: $('refundNote').value.trim(), source: original.source || '' };
+  const index = previous ? data.entries.indexOf(previous) : -1;
+  if (index >= 0) data.entries[index] = entry; else data.entries.push(entry);
+  try { await save(); } catch { if (index >= 0) data.entries[index] = previous; else data.entries.pop(); return toast('退款保存失败'); }
+  close('refundModal'); render(); toast(previous ? '退款已更新' : '退款已记录');
+};
 async function handleRecordClick(e) {
   if (e.target.matches('.record-photo')) { window.open(e.target.src, '_blank'); return; }
+  const refundButton = e.target.closest('[data-refund]');
+  if (refundButton) {
+    const original = data.entries.find(item => String(item.id) === refundButton.dataset.refund && item.type === 'expense' && !item.deletedAt);
+    if (!original) return;
+    if (!JianjiFeatures.expenseParts(original).some(part => JianjiFeatures.refundAvailable(original, part.category, data.entries) > 0)) return toast('这笔支出已全部退款');
+    openRefund(original);
+    return;
+  }
   const editButton = e.target.closest('[data-edit]');
   if (editButton) {
     const entry = data.entries.find(item => String(item.id) === editButton.dataset.edit);
     if (!entry) return;
+    if (entry.type === 'refund') {
+      const original = data.entries.find(item => String(item.id) === String(entry.refundOf) && !item.deletedAt);
+      if (!original) return toast('原支出已不存在');
+      openRefund(original, entry);
+      return;
+    }
     if (entry.transferFrom) {
       $('manageAccounts').click();
       editingTransferId = String(entry.id);
@@ -794,13 +932,18 @@ async function handleRecordClick(e) {
       return;
     }
     editingId = String(entry.id);
+    paymentDraftId = null;
     $('entryModalTitle').textContent = '编辑记录';
     $('entryForm').reset();
+    $('splitRows').replaceChildren();
     clearSelectedImage();
     setType(entry.type);
     $('entryAmount').value = entry.amount;
     $('entryDate').value = entry.date;
     $('entryCategory').value = cats.includes(entry.category) ? entry.category : '其他';
+    $('splitEnabled').checked = Array.isArray(entry.splits) && entry.splits.length > 0;
+    if ($('splitEnabled').checked) renderSplitRows(entry.splits);
+    updateSplitUI();
     $('entryAccount').value = entry.accountId || '';
     $('entryNote').value = entry.note || '';
     $('removeStoredPhotoField').hidden = !entry.photoId;
@@ -813,11 +956,57 @@ async function handleRecordClick(e) {
   if (!button || !confirm('确定删除这笔记录吗？')) return;
   const entry = data.entries.find(item => String(item.id) === button.dataset.delete && !item.deletedAt);
   if (!entry) return;
+  if (entry.type === 'expense' && data.entries.some(item => item.type === 'refund' && String(item.refundOf) === String(entry.id))) return toast('请先永久删除关联退款，再删除原支出');
   entry.deletedAt = new Date().toISOString();
   try { await save(); } catch { delete entry.deletedAt; return toast('删除失败，请检查存储空间'); }
   render(); toast('已移到最近删除，可在账本设置中恢复');
 }
 document.querySelectorAll('.record-list').forEach(container => container.onclick = handleRecordClick);
+const onAndroid = () => window.Capacitor?.getPlatform?.() === 'android' && Boolean(window.Capacitor.nativePromise);
+const paymentPlugin = (method, args = {}) => window.Capacitor.nativePromise('PaymentNotification', method, args);
+function renderPaymentNotices() {
+  const pending = paymentNotices.filter(item => !data.entries.some(entry => entry.paymentNoticeId === item.id));
+  $('paymentNotices').innerHTML = pending.map(item => {
+    const nearNotice = pending.some(other => other.id !== item.id && other.source === item.source && Math.round(other.amount * 100) === Math.round(item.amount * 100) && Math.abs(other.receivedAt - item.receivedAt) < 120000);
+    const nearEntry = liveEntries().some(entry => entry.type === 'expense' && entry.source === item.source && Math.round(Number(entry.amount) * 100) === Math.round(item.amount * 100) && (entry.paymentReceivedAt ? Math.abs(entry.paymentReceivedAt - item.receivedAt) < 120000 : entry.date === new Date(item.receivedAt).toLocaleDateString('en-CA')));
+    return `<div class="payment-notice"><div class="payment-notice-main"><b>${escapeHtml(item.source)} · ${money(item.amount)}</b><small>${escapeHtml(new Date(item.receivedAt).toLocaleString('zh-CN'))} · ${nearNotice || nearEntry ? '疑似重复，请核对后再记入' : '请核对金额与类别'}</small></div><button type="button" data-payment-confirm="${escapeHtml(item.id)}">确认</button><button type="button" data-payment-dismiss="${escapeHtml(item.id)}">忽略</button></div>`;
+  }).join('') || '<div class="empty">暂无待确认的支付通知</div>';
+}
+async function refreshPaymentNotices() {
+  if (!onAndroid()) return;
+  $('paymentCard').hidden = false;
+  try {
+    const [status, result] = await Promise.all([paymentPlugin('status'), paymentPlugin('list')]);
+    $('paymentSettings').textContent = status.enabled ? '权限设置' : '开启通知读取';
+    $('paymentStatus').textContent = status.enabled
+      ? '已开启：简记只在本机保留识别出的平台、金额和时间。通知可能遗漏或识别不准，请确认后入账。'
+      : '未开启：点击开启通知读取，在系统设置中授权简记。此权限允许应用读取设备通知；简记只处理微信和支付宝的支付通知。';
+    paymentNotices = Array.isArray(result.notices) ? result.notices : [];
+    renderPaymentNotices();
+  } catch { $('paymentStatus').textContent = '暂时无法读取支付通知，请稍后重试。'; }
+}
+$('paymentSettings').onclick = async () => {
+  try { await paymentPlugin('openSettings'); } catch { toast('无法打开通知读取权限设置'); }
+};
+$('paymentNotices').onclick = async event => {
+  const confirmButton = event.target.closest('[data-payment-confirm]');
+  if (confirmButton) {
+    const item = paymentNotices.find(notice => notice.id === confirmButton.dataset.paymentConfirm);
+    if (!item) return refreshPaymentNotices();
+    openNewEntry('其他');
+    paymentDraftId = item.id;
+    $('entryAmount').value = Number(item.amount).toFixed(2);
+    $('entryDate').value = new Date(item.receivedAt).toLocaleDateString('en-CA');
+    $('entryNote').value = `${item.source}支付`;
+    return;
+  }
+  const dismissButton = event.target.closest('[data-payment-dismiss]');
+  if (!dismissButton) return;
+  try { await paymentPlugin('dismiss', { id: dismissButton.dataset.paymentDismiss }); await refreshPaymentNotices(); }
+  catch { toast('暂时无法忽略这条通知'); }
+};
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPaymentNotices(); });
+window.addEventListener('focus', refreshPaymentNotices);
 async function start() {
   try {
     data = await JianjiStore.initialize();
@@ -826,6 +1015,7 @@ async function start() {
     refreshAccountUI();
     render();
     switchPage(location.hash.slice(1), false);
+    refreshPaymentNotices();
   } catch (error) {
     document.querySelector('main').innerHTML = `<section class="card"><h2>账本暂时无法打开</h2><p>${escapeHtml(error.message || '数据库读取失败')}</p><p>请保留应用数据，重新打开应用后重试。</p></section>`;
   }

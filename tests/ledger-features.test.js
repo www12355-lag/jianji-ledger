@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { possibleDuplicates, recurringOccurrences, accountBalance, classifyImport } = require('../ledger-features.js');
+const { possibleDuplicates, recurringOccurrences, accountBalance, classifyImport, categoryNet, netExpense, validSplits, refundAvailable } = require('../ledger-features.js');
 const { createBackup, readBackup } = require('../backup-tools.js');
 
 const existing = [
@@ -27,6 +27,14 @@ const accountEntries = [
 ];
 assert.equal(accountBalance({ id: 'cash', openingBalance: 10 }, accountEntries), 60);
 assert.equal(accountBalance({ id: 'bank', openingBalance: 0 }, accountEntries), 20);
+const split = { id: 5, type: 'expense', amount: 100, category: '餐饮', splits: [{ category: '餐饮', amount: 60 }, { category: '购物', amount: 40 }], accountId: 'cash' };
+const refund = { id: 6, type: 'refund', refundOf: 5, category: '购物', amount: 15, accountId: 'cash' };
+assert(validSplits(100, split.splits, ['餐饮', '购物']));
+assert(!validSplits(100, [{ category: '餐饮', amount: 60 }, { category: '餐饮', amount: 40 }], ['餐饮', '购物']));
+assert.equal(categoryNet(split, '购物') + categoryNet(refund, '购物'), 25);
+assert.equal(netExpense([split, refund]), 85);
+assert.equal(refundAvailable(split, '购物', [refund]), 25);
+assert.equal(accountBalance({ id: 'cash', openingBalance: 0 }, [split, refund]), -85);
 const rule = { id: 'metro', keyword: '地铁', source: '支付宝', category: '交通' };
 assert.equal(classifyImport({ type: 'expense', note: '地铁公司', source: '支付宝', category: '其他' }, [rule]).category, '交通');
 assert.equal(classifyImport({ type: 'expense', note: '地铁公司', source: '微信', category: '其他' }, [rule]).category, '其他');
@@ -37,5 +45,8 @@ assert.equal(classifyImport({ type: 'expense', note: '地铁公司', source: '�
   assert(!file.includes('餐饮'));
   assert.deepEqual(await readBackup(file, 'test-password'), { data: ledger, photos: [{ id: 'photo-1', mime: 'image/png', base64: 'AAE=' }] });
   await assert.rejects(readBackup(file, 'wrong-password'), /密码错误/);
+  const expanded = { ...ledger, entries: [{ ...split, date: '2026-10-12' }, { ...refund, date: '2026-10-13' }] };
+  const expandedFile = await createBackup(expanded, [], 'test-password');
+  assert.deepEqual((await readBackup(expandedFile, 'test-password')).data, expanded);
   console.log('ledger features and encrypted backup: passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -14,7 +14,19 @@
   }
   function validateData(value) {
     if (!value || !Array.isArray(value.entries) || !value.budgets || typeof value.budgets !== 'object' || Array.isArray(value.budgets)) throw new Error('备份内容缺少账目或预算');
-    if (value.entries.length > 100000 || value.entries.some(entry => !entry || !['expense', 'income', 'excluded'].includes(entry.type) || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date) || !Number.isFinite(Number(entry.amount)) || Number(entry.amount) <= 0)) throw new Error('备份中的账目格式不正确');
+    if (value.entries.length > 100000 || value.entries.some(entry => !entry || !['expense', 'income', 'excluded', 'refund'].includes(entry.type) || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date) || !Number.isFinite(Number(entry.amount)) || Number(entry.amount) <= 0 || entry.type === 'refund' && (entry.refundOf === undefined || typeof entry.category !== 'string') || entry.splits && (!Array.isArray(entry.splits) || entry.type !== 'expense' || entry.splits.length < 2 || entry.splits.some(part => !part || typeof part.category !== 'string' || !Number.isFinite(Number(part.amount)) || Number(part.amount) <= 0) || Math.round(entry.splits.reduce((sum, part) => sum + Number(part.amount), 0) * 100) !== Math.round(Number(entry.amount) * 100)))) throw new Error('备份中的账目格式不正确');
+    const originals = new Map(value.entries.filter(entry => entry.type === 'expense').map(entry => [String(entry.id), entry]));
+    const returned = new Map();
+    for (const refund of value.entries.filter(entry => entry.type === 'refund')) {
+      const original = originals.get(String(refund.refundOf));
+      const part = original && (original.splits?.length ? original.splits : [{ category: original.category, amount: original.amount }]).find(item => item.category === refund.category);
+      if (!part) throw new Error('备份中的退款缺少原支出');
+      if (refund.deletedAt) continue;
+      const key = `${refund.refundOf}\u0000${refund.category}`;
+      const total = (returned.get(key) || 0) + Math.round(Number(refund.amount) * 100);
+      if (total > Math.round(Number(part.amount) * 100)) throw new Error('备份中的退款超过原支出');
+      returned.set(key, total);
+    }
     if (value.customCategories && (!Array.isArray(value.customCategories) || value.customCategories.length > 100)) throw new Error('备份中的分类格式不正确');
     if (value.recurring && (!Array.isArray(value.recurring) || value.recurring.length > 1000)) throw new Error('备份中的周期账目格式不正确');
     if (value.accounts && (!Array.isArray(value.accounts) || value.accounts.length > 1000 || value.accounts.some(account => !account || typeof account.id !== 'string' || typeof account.name !== 'string' || !Number.isFinite(Number(account.openingBalance))))) throw new Error('备份中的账户格式不正确');
