@@ -35,6 +35,7 @@ function normalizeData() {
   if (!Array.isArray(data.projects)) data.projects = [];
   if (!Array.isArray(data.receivables)) data.receivables = [];
   if (!Array.isArray(data.entryHistory)) data.entryHistory = [];
+  if (typeof data.lastEntryAccount !== 'string') data.lastEntryAccount = '';
   if (typeof data.missingCheckEnabled !== 'boolean') data.missingCheckEnabled = true;
   if (typeof data.missingCheckDismissedUntil !== 'string') data.missingCheckDismissedUntil = '';
   if (typeof data.lastBackupAt !== 'string') data.lastBackupAt = '';
@@ -95,7 +96,7 @@ async function loadVisiblePhotos() {
 }
 function renderRecordList(id, list, emptyText) {
   const container = $(id);
-  container.innerHTML = list.map(e => `<div class="record"><div class="icon ${toneClass(e.type === 'expense' ? e.category : e.type === 'refund' ? 'income' : e.type)}">${iconMarkup(e.type === 'expense' ? e.category : e.type === 'refund' ? 'income' : e.type)}</div><div class="recordtext"><b></b><small></small></div>${e.photoId ? `<img class="record-photo" data-photo-id="${escapeHtml(e.photoId)}" alt="记录图片" hidden>` : ''}<div class="amount ${e.type === 'income' || e.type === 'refund' ? 'income' : e.type === 'excluded' ? 'excluded' : ''}">${e.type === 'income' || e.type === 'refund' ? '+' : e.type === 'excluded' ? '' : '−'}${money(e.amount)}</div><div class="actions">${e.type === 'expense' ? `<button data-refund="${escapeHtml(e.id)}" aria-label="为这笔支出记退款">退款</button>` : ''}<button data-edit="${escapeHtml(e.id)}" aria-label="编辑记录">编辑</button><button data-delete="${escapeHtml(e.id)}" aria-label="删除记录">×</button></div></div>`).join('') || `<div class="empty">${emptyText}</div>`;
+  container.innerHTML = list.map((e, index) => `${id === 'records' && (index === 0 || list[index - 1].date !== e.date) ? dayHeading(e.date, list) : ''}<div class="record"><div class="icon ${toneClass(e.type === 'expense' ? e.category : e.type === 'refund' ? 'income' : e.type)}">${iconMarkup(e.type === 'expense' ? e.category : e.type === 'refund' ? 'income' : e.type)}</div><div class="recordtext"><b></b><small></small></div>${e.photoId ? `<img class="record-photo" data-photo-id="${escapeHtml(e.photoId)}" alt="记录图片" hidden>` : ''}<div class="amount ${e.type === 'income' || e.type === 'refund' ? 'income' : e.type === 'excluded' ? 'excluded' : ''}">${e.type === 'income' || e.type === 'refund' ? '+' : e.type === 'excluded' ? '' : '−'}${money(e.amount)}</div><div class="actions">${e.type === 'expense' ? `<button data-refund="${escapeHtml(e.id)}" aria-label="为这笔支出记退款">退款</button>` : ''}<button data-edit="${escapeHtml(e.id)}" aria-label="编辑记录">编辑</button><button data-delete="${escapeHtml(e.id)}" aria-label="删除记录">×</button></div></div>`).join('') || `<div class="empty">${emptyText}</div>`;
   [...container.querySelectorAll('.record')].forEach((row, index) => {
     const entry = list[index];
     row.querySelector('b').textContent = entry.note || (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '月度收入' : entry.type === 'refund' ? '退款' : Array.isArray(entry.splits) && entry.splits.length ? '多类别支出' : entry.category);
@@ -173,6 +174,7 @@ function render() {
     && (!category || e.category === category || e.type === 'expense' && JianjiFeatures.expenseParts(e).some(part => part.category === category))
     && (!projectId || (e.projectIds || []).includes(projectId)));
   $('count').textContent = `共 ${filtered.length} 笔`;
+  $('filteredTotals').textContent = `筛选合计：收入 ${money(filtered.filter(e => e.type === 'income').reduce((sum,e) => sum + Number(e.amount),0))} · 净支出 ${money(JianjiFeatures.netExpense(filtered))}`;
   const budgets = data.budgets[ym] || {};
   $('budgets').innerHTML = cats.filter(c => Number(budgets[c]) > 0).map(c => {
     const used = list.reduce((sum, entry) => sum + JianjiFeatures.categoryNet(entry, c), 0);
@@ -198,6 +200,7 @@ function render() {
   renderCashFlow();
   renderProjects();
   renderReceivables();
+  renderTodo();
   renderRecordList('recentRecords', list.slice(0, 3), '这个月还没有记录，点「记一笔」开始');
   renderRecordList('records', filtered, filtered.length ? '' : detailFilter === 'all' ? '这个月还没有记录，点「记一笔」开始' : '这个月没有这类记录');
   renderStats(list, income, expense);
@@ -216,7 +219,7 @@ function switchPage(page, updateHash = true) {
   if (updateHash) location.hash = activePage;
   window.scrollTo(0, 0);
 }
-function open(id) { $(id).classList.add('show'); }
+function open(id) { if (id !== 'featureDetailModal') close('featureDetailModal'); $(id).classList.add('show'); }
 function close(id) { $(id).classList.remove('show'); }
 function setType(type) {
   entryType = type;
@@ -274,6 +277,7 @@ function selectImage(file) {
   if (!file.type.startsWith('image/')) return toast('请选择图片文件');
   if (file.size > 15 * 1024 * 1024) return toast('图片请小于 15 MB');
   if (previewUrl) URL.revokeObjectURL(previewUrl);
+  $('entryMore').open = true;
   selectedImage = file;
   previewUrl = URL.createObjectURL(file);
   $('photoPreview').src = previewUrl;
@@ -282,25 +286,38 @@ function selectImage(file) {
   $('recognizeImage').hidden = !onAndroid();
   $('ocrStatus').textContent = '';
 }
+function preferredCategories() {
+  const counts = new Map();
+  for (const entry of liveEntries().filter(item => item.type === 'expense').sort((a,b) => b.date.localeCompare(a.date)).slice(0, 100)) {
+    for (const part of JianjiFeatures.expenseParts(entry)) counts.set(part.category, (counts.get(part.category) || 0) + 1);
+  }
+  return [...cats].sort((a,b) => (counts.get(b) || 0) - (counts.get(a) || 0));
+}
+function dayHeading(date, list) {
+  const today = new Date(), yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  const label = date === today.toLocaleDateString('en-CA') ? '今天' : date === yesterday.toLocaleDateString('en-CA') ? '昨天' : date;
+  const entries = list.filter(entry => entry.date === date);
+  return `<div class="day-heading"><b>${escapeHtml(label)}</b><small>收入 ${money(entries.filter(entry => entry.type === 'income').reduce((sum,entry) => sum + Number(entry.amount),0))} · 净支出 ${money(JianjiFeatures.netExpense(entries))}</small></div>`;
+}
 function refreshCategoryUI() {
   refreshCats();
-  for (const id of ['entryCategory', 'budgetCategory', 'recordCategory', 'recurringCategory', 'ruleCategory', 'templateCategory', 'annualPlanCategory']) {
+  for (const id of ['entryCategory', 'budgetCategory', 'recordCategory', 'recurringCategory', 'ruleCategory', 'templateCategory', 'annualPlanCategory', 'subscriptionCategory']) {
     const select = $(id);
     const old = select.value;
-    select.innerHTML = (id === 'recordCategory' ? '<option value="">全部类别</option>' : id === 'annualPlanCategory' ? '<option value="">不关联类别</option>' : '') + cats.map(category => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join('');
+    select.innerHTML = (id === 'recordCategory' ? '<option value="">全部类别</option>' : id === 'annualPlanCategory' ? '<option value="">不关联类别</option>' : '') + (id === 'entryCategory' ? preferredCategories() : cats).map(category => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join('');
     if (cats.includes(old)) select.value = old;
   }
-  $('categoryShortcuts').innerHTML = cats.map(category => `<button type="button" class="category-shortcut ${toneClass(category)}" data-quick-category="${escapeHtml(category)}" aria-label="记录${escapeHtml(category)}支出"><span class="shortcut-icon">${iconMarkup(category)}</span><span>${escapeHtml(category)}</span></button>`).join('');
+  $('categoryShortcuts').innerHTML = preferredCategories().map(category => `<button type="button" class="category-shortcut ${toneClass(category)}" data-quick-category="${escapeHtml(category)}" aria-label="记录${escapeHtml(category)}支出"><span class="shortcut-icon">${iconMarkup(category)}</span><span>${escapeHtml(category)}</span></button>`).join('');
   $('customCategoryIcon').innerHTML = baseCats.map(category => `<option value="${category}">${category}</option>`).join('');
 }
 function renderCustomCategories() {
   $('customCategoryList').innerHTML = data.customCategories.map((item, index) => `<div class="settings-row"><span class="category-mini ${toneClass(item.name)}">${iconMarkup(item.name)}</span><input data-category-edit="${index}" maxlength="12" value="${escapeHtml(item.name)}" aria-label="分类名称"><button data-category-rename="${index}">改名</button><button data-category-delete="${index}">删除</button></div>`).join('') || '<div class="empty">还没有自定义分类</div>';
 }
 function refreshAccountUI() {
-  for (const id of ['entryAccount', 'transferFrom', 'transferTo', 'templateAccount', 'reconcileAccount', 'cashFlowAccount', 'cashPlanAccount', 'recurringAccount', 'loanAccount', 'repaymentAccount']) {
+  for (const id of ['entryAccount', 'transferFrom', 'transferTo', 'templateAccount', 'reconcileAccount', 'cashFlowAccount', 'cashPlanAccount', 'recurringAccount', 'loanAccount', 'repaymentAccount', 'subscriptionAccount']) {
     const select = $(id);
     const selected = select.value;
-    const blank = id === 'cashFlowAccount' ? '<option value="">全部账户</option>' : ['entryAccount', 'templateAccount', 'cashPlanAccount', 'recurringAccount', 'loanAccount', 'repaymentAccount'].includes(id) ? '<option value="">未指定账户</option>' : '';
+    const blank = id === 'cashFlowAccount' ? '<option value="">全部账户</option>' : ['entryAccount', 'templateAccount', 'cashPlanAccount', 'recurringAccount', 'loanAccount', 'repaymentAccount', 'subscriptionAccount'].includes(id) ? '<option value="">未指定账户</option>' : '';
     select.innerHTML = blank + data.accounts.map(account => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.name)}</option>`).join('');
     if (selected && data.accounts.some(account => account.id === selected)) select.value = selected;
   }
@@ -361,19 +378,7 @@ function renderMissingCheck() {
 refreshCategoryUI();
 refreshAccountUI();
 refreshProjectUI();
-for (const id of ['budgetCard', 'cashFlowCard', 'annualCard', 'budgetAlertCard']) $('featurePlan').append($(id));
-for (const id of ['planningCard', 'projectCard', 'receivableCard', 'paymentCard', 'missingCheckCard']) $('featureDaily').append($(id));
-$('featureManage').append($('settingsCard'));
-function showFeatureGroup(group) {
-  for (const [name, panel] of [['plan', 'featurePlan'], ['daily', 'featureDaily'], ['manage', 'featureManage']]) $(panel).hidden = name !== group;
-  document.querySelectorAll('[data-feature-group]').forEach(button => {
-    const selected = button.dataset.featureGroup === group;
-    button.classList.toggle('active', selected);
-    button.setAttribute('aria-expanded', String(selected));
-  });
-  $('featureGuide').hidden = Boolean(group);
-}
-document.querySelectorAll('[data-feature-group]').forEach(button => button.onclick = () => { showFeatureGroup(button.dataset.featureGroup); window.scrollTo(0, 0); });
+setupFeatureMenu();
 $('homeFeatures').onclick = () => switchPage('features');
 for (const id of ['recordSearch', 'recordCategory', 'recordSource', 'recordProject', 'allMonths']) $(id).addEventListener('input', render);
 $('cashFlowAccount').onchange = renderCashFlow;
@@ -391,11 +396,13 @@ document.querySelectorAll('[data-filter]').forEach(button => button.onclick = ()
   render();
 });
 window.addEventListener('hashchange', () => switchPage(location.hash.slice(1), false));
-function openNewEntry(category = '餐饮') {
+function openNewEntry(category = null) {
   editingId = null;
   paymentDraftId = null;
   $('entryModalTitle').textContent = '记一笔';
   $('entryForm').reset();
+  $('entryMore').open = false;
+  $('entryAccount').value = data.accounts.some(account => account.id === data.lastEntryAccount) ? data.lastEntryAccount : '';
   $('splitRows').replaceChildren();
   $('removeStoredPhotoField').hidden = true;
   $('entryDate').value = new Date().toLocaleDateString('en-CA');
@@ -403,7 +410,7 @@ function openNewEntry(category = '餐饮') {
   $('merchantRuleSuggestion').hidden = true;
   clearSelectedImage();
   setType('expense');
-  $('entryCategory').value = category;
+  $('entryCategory').value = category || preferredCategories()[0];
   open('entryModal');
   $('entryAmount').focus();
 }
@@ -897,7 +904,7 @@ function setRecurringType(type) {
   $('recurringCategoryField').hidden = type === 'income';
 }
 function renderRecurringRules() {
-  $('recurringRules').innerHTML = data.recurring.map(rule => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(rule.note)}</b><small>${rule.frequency === 'weekly' ? '每周' : '每月'} · ${money(rule.amount)} · ${rule.active === false ? '已暂停' : '进行中'}</small></div><button data-rule-edit="${escapeHtml(rule.id)}">编辑</button><button data-rule-toggle="${escapeHtml(rule.id)}">${rule.active === false ? '启用' : '暂停'}</button><button data-rule-delete="${escapeHtml(rule.id)}">删除</button></div>`).join('') || '<div class="empty">还没有周期账目</div>';
+  $('recurringRules').innerHTML = data.recurring.map(rule => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(rule.note)}</b><small>${rule.frequency === 'weekly' ? '每周' : rule.frequency === 'yearly' ? '每年' : '每月'} · ${money(rule.amount)} · ${rule.active === false ? '已暂停' : '进行中'}</small></div><button data-rule-edit="${escapeHtml(rule.id)}">编辑</button><button data-rule-toggle="${escapeHtml(rule.id)}">${rule.active === false ? '启用' : '暂停'}</button><button data-rule-delete="${escapeHtml(rule.id)}">删除</button></div>`).join('') || '<div class="empty">还没有周期账目</div>';
 }
 $('manageRecurring').onclick = () => { resetRecurringForm(); renderRecurringRules(); refreshReminderStatus(); open('recurringModal'); };
 $('cancelRecurringEdit').onclick = resetRecurringForm;
@@ -1451,6 +1458,7 @@ $('entryForm').onsubmit = async e => {
   }
   const index = original ? data.entries.indexOf(original) : -1;
   const previousRules = structuredClone(data.importRules);
+  const previousAccount = data.lastEntryAccount;
   let historyAdded = false;
   try {
     if (index >= 0) data.entries[index] = entry;
@@ -1461,6 +1469,7 @@ $('entryForm').onsubmit = async e => {
       else if (data.importRules.length < 1000) data.importRules.unshift({ id: crypto.randomUUID(), keyword: entry.merchant, source: '', category: entry.category });
       else throw new Error('商户分类规则已达到上限');
     }
+    if (!original) data.lastEntryAccount = entry.accountId;
     rememberEntry(original ? '编辑' : '新增', original, entry);
     historyAdded = true;
     await save();
@@ -1469,6 +1478,7 @@ $('entryForm').onsubmit = async e => {
     if (index >= 0) data.entries[index] = original;
     else data.entries.pop();
     data.importRules = previousRules;
+    data.lastEntryAccount = previousAccount;
     if (historyAdded) data.entryHistory.shift();
     if (selectedImage) photoStore('delete', entry.photoId).catch(() => {});
     toast('记录保存失败，请检查浏览器存储空间');
@@ -1482,6 +1492,7 @@ $('entryForm').onsubmit = async e => {
   }
   close('entryModal');
   clearSelectedImage();
+  refreshCategoryUI();
   render();
   toast(original ? '记录已更新' : '已保存记录');
 };
@@ -1583,6 +1594,7 @@ async function handleRecordClick(e) {
     updateSplitUI();
     $('entryAccount').value = entry.accountId || '';
     $('entryNote').value = entry.note || '';
+    $('entryMore').open = Boolean(entry.note || entry.merchant || entry.photoId || entry.splits?.length || entry.projectIds?.length);
     setSelectedProjects(entry.projectIds || []);
     $('entryMerchant').value = entry.merchant || '';
     $('rememberMerchant').checked = false;
@@ -1627,6 +1639,7 @@ async function refreshPaymentNotices() {
       : '未开启：点击开启通知读取，在系统设置中授权简记。此权限允许应用读取设备通知；简记只处理微信和支付宝的支付通知。';
     paymentNotices = Array.isArray(result.notices) ? result.notices : [];
     renderPaymentNotices();
+    renderTodo();
   } catch { $('paymentStatus').textContent = '暂时无法读取支付通知，请稍后重试。'; }
 }
 $('paymentSettings').onclick = async () => {

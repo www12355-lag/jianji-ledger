@@ -29,6 +29,7 @@
     }
     if (value.customCategories && (!Array.isArray(value.customCategories) || value.customCategories.length > 100)) throw new Error('备份中的分类格式不正确');
     if (value.recurring && (!Array.isArray(value.recurring) || value.recurring.length > 1000)) throw new Error('备份中的周期账目格式不正确');
+    if (value.recurring?.some(rule => rule.subscription !== undefined && (typeof rule.subscription !== 'boolean' || rule.subscription && (rule.type !== 'expense' || !['weekly','monthly','yearly'].includes(rule.frequency) || !Number.isFinite(Number(rule.amount)) || Number(rule.amount) <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(rule.startDate))))) throw new Error('备份中的订阅格式不正确');
     if (value.accounts && (!Array.isArray(value.accounts) || value.accounts.length > 1000 || value.accounts.some(account => !account || typeof account.id !== 'string' || typeof account.name !== 'string' || !Number.isFinite(Number(account.openingBalance))))) throw new Error('备份中的账户格式不正确');
     if (value.importRules && (!Array.isArray(value.importRules) || value.importRules.length > 1000 || value.importRules.some(rule => !rule || typeof rule.keyword !== 'string' || typeof rule.category !== 'string'))) throw new Error('备份中的分类规则格式不正确');
     if (value.accounts?.some(account => account.reconciliations && (!Array.isArray(account.reconciliations) || account.reconciliations.length > 10000 || account.reconciliations.some(item => !item || typeof item.id !== 'string' || !Number.isFinite(Number(item.actual)) || !Number.isFinite(Number(item.delta)))))) throw new Error('备份中的对账记录格式不正确');

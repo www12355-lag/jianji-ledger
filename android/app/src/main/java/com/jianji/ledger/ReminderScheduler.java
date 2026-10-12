@@ -56,7 +56,7 @@ final class ReminderScheduler {
                 due.set(Calendar.DAY_OF_MONTH, Math.min(day, due.getActualMaximum(Calendar.DAY_OF_MONTH)));
                 due.add(Calendar.DAY_OF_MONTH, -1); atNine(due);
                 if (due.getTimeInMillis() > after) return due.getTimeInMillis();
-                month.add(Calendar.MONTH, 1);
+                month.add(Calendar.MONTH, "yearly".equals(rule.optString("frequency")) ? 12 : 1);
             }
         } catch (Exception ignored) { }
         return -1;

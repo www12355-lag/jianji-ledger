@@ -28,6 +28,7 @@
         </div>
         <button class="hero-action" id="heroAdd" type="button">＋ 记一笔</button>
       </section>
+      <button id="homeTodo" class="home-todo" type="button" hidden></button>
       <section class="quick-card" aria-label="分类速记">
         <div class="cardhead"><div><h2>分类速记</h2><p>选择类别，快速记一笔</p></div></div>
         <div class="category-shortcuts" id="categoryShortcuts"></div>
@@ -125,6 +126,7 @@
         <select id="recordProject" aria-label="按项目标签筛选"><option value="">全部项目</option></select>
       </div>
       <label class="all-months"><input id="allMonths" type="checkbox"> 搜索所有月份</label>
+      <div class="detail-summary"><span id="filteredTotals"></span><button type="button" class="link" id="clearFilters">清空筛选</button></div>
       <section class="card detail-card"><div class="record-list" id="records"></div></section>
     </section>
 
@@ -151,22 +153,29 @@
     </div>
   </nav>
 
-  <div class="modalback" id="entryModal"><div class="modal">
+  <div id="featureStorage" hidden></div>
+  <div class="modalback" id="featureDetailModal"><div class="modal"><div class="modalhead"><h2 id="featureDetailTitle"></h2><button class="close" data-close="featureDetailModal" aria-label="关闭">×</button></div><p id="featureDetailHelp" class="import-help"></p><div id="featureDetailContent"></div></div></div>
+  <div class="modalback" id="todoModal"><div class="modal"><div class="modalhead"><h2>待处理</h2><button class="close" data-close="todoModal" aria-label="关闭">×</button></div><p class="import-help">点一项查看并处理；确认后才会记入账本。</p><div id="todoList"></div></div></div>
+  <div class="modalback" id="subscriptionModal"><div class="modal"><div class="modalhead"><h2>订阅管理</h2><button class="close" data-close="subscriptionModal" aria-label="关闭">×</button></div><p class="import-help">会员和软件订阅集中在这里。到期后作为周期账目提醒，确认后才入账；暂停记录不会取消平台扣费。</p><div id="subscriptionSummary" class="budget-remaining"></div><div id="subscriptionList"></div><div class="backup-divider">添加或编辑订阅</div><form id="subscriptionForm"><label class="field">关联已有周期支出<select id="subscriptionLink"><option value="">新建订阅</option></select></label><label class="field">订阅名称<input id="subscriptionName" maxlength="60" required placeholder="例如：视频会员"></label><label class="field">每次费用<input id="subscriptionAmount" type="number" min="0.01" step="0.01" required></label><label class="field">扣费周期<select id="subscriptionFrequency"><option value="monthly">每月</option><option value="yearly">每年</option><option value="weekly">每周</option></select></label><label class="field">首次扣费日期<input id="subscriptionDate" type="date" required></label><label class="field">类别<select id="subscriptionCategory"></select></label><label class="field">账户<select id="subscriptionAccount"></select></label><button class="primary" id="saveSubscription">添加订阅</button><button type="button" id="cancelSubscriptionEdit" class="quiet-button" hidden>取消编辑</button></form></div></div>
+  <div class="modalback" id="entryModal"><div class="modal entry-modal">
     <div class="modalhead"><h2 id="entryModalTitle">记一笔</h2><button class="close" data-close="entryModal" aria-label="关闭">×</button></div>
     <div class="seg"><button id="expenseTab" class="active">支出</button><button id="incomeTab">收入</button><button id="excludedTab">不计收支</button></div>
-    <form id="entryForm">
+    <form id="entryForm"><div class="entry-fields">
       <label class="field">金额<input id="entryAmount" type="number" min="0.01" step="0.01" placeholder="0.00" required></label>
       <label class="field">日期<input id="entryDate" type="date" required></label>
       <label class="field" id="categoryField">类别<select id="entryCategory"></select></label>
-      <div id="splitField" hidden><label class="all-months"><input type="checkbox" id="splitEnabled"> 这笔支出分到多个类别</label><div id="splitRows"></div><button type="button" class="quiet-button" id="addSplit" hidden>添加类别</button><p class="import-help" id="splitRemaining" hidden></p></div>
       <label class="field">账户<select id="entryAccount"></select></label>
+      <details id="entryMore" class="entry-more"><summary>更多选项 <span>备注、图片、项目、拆分</span></summary>
+      <div id="splitField" hidden><label class="all-months"><input type="checkbox" id="splitEnabled"> 这笔支出分到多个类别</label><div id="splitRows"></div><button type="button" class="quiet-button" id="addSplit" hidden>添加类别</button><p class="import-help" id="splitRemaining" hidden></p></div>
+
       <label class="field">备注<input id="entryNote" maxlength="60" placeholder="例如：午餐"></label>
       <fieldset class="project-field"><legend>项目标签（选填）</legend><div id="entryProjectChoices"></div></fieldset>
       <label class="field" id="merchantField">商户（选填）<input id="entryMerchant" maxlength="40" placeholder="例如：常去的咖啡店"></label>
       <label class="all-months" id="rememberMerchantField"><input id="rememberMerchant" type="checkbox"> 记住该商户的支出分类</label>
       <div id="merchantRuleSuggestion" class="import-help" hidden><span id="merchantRuleText"></span><button type="button" class="quiet-button" id="applyMerchantRule">采用建议</button></div>
       <div class="photo-field"><div class="photo-label">图片（选填）</div><div class="photo-actions"><button type="button" id="cameraButton">📷 拍照</button><button type="button" id="imageButton">▧ 选择图片或截图</button></div><input id="cameraInput" type="file" accept="image/*" capture="environment" hidden><input id="imageInput" type="file" accept="image/*" hidden><div class="photo-selection"><img id="photoPreview" alt="所选图片预览" hidden><span id="photoName">可拍摄物品，也可选择相册里的网购截图</span><button type="button" id="removePhoto" aria-label="移除图片">×</button></div><button type="button" class="quiet-button" id="recognizeImage" hidden>识别截图并预填</button><p class="import-help" id="ocrStatus" aria-live="polite"></p><label id="removeStoredPhotoField" class="all-months" hidden><input id="removeStoredPhoto" type="checkbox"> 删除原图片</label></div>
-      <button class="primary">保存记录</button>
+      </details>
+      </div><div class="entry-save-bar"><button class="primary">保存记录</button></div>
     </form>
   </div></div>
   <div class="modalback" id="refundModal"><div class="modal">
@@ -236,7 +245,7 @@
       <label class="field">金额<input id="recurringAmount" type="number" min="0.01" step="0.01" required></label>
       <label class="field" id="recurringCategoryField">类别<select id="recurringCategory"></select></label>
       <label class="field">备注<input id="recurringNote" maxlength="60" required placeholder="例如：房租"></label>
-      <label class="field">周期<select id="recurringFrequency"><option value="monthly">每月</option><option value="weekly">每周</option></select></label>
+      <label class="field">周期<select id="recurringFrequency"><option value="monthly">每月</option><option value="weekly">每周</option><option value="yearly">每年</option></select></label>
       <label class="field">预计使用账户<select id="recurringAccount"></select></label>
       <label class="field">首次日期<input id="recurringStart" type="date" required></label>
       <button class="primary" id="saveRecurringRule">添加周期账目</button><button type="button" class="quiet-button" id="cancelRecurringEdit" hidden>取消编辑</button>
@@ -298,6 +307,7 @@
   <script src="csv-export.js"></script>
   <script src="ocr-tools.js"></script>
   <script src="ledger-store.js"></script>
+  <script src="ux-app.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

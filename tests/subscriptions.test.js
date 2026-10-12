@@ -1,0 +1,15 @@
+const assert = require('node:assert/strict');
+const { nextRecurringDate, subscriptionMonthly, recurringOccurrences, cashFlowForecast } = require('../ledger-features.js');
+const { createBackup, readBackup } = require('../backup-tools.js');
+const yearly = { id:'annual', subscription:true, type:'expense', amount:120, frequency:'yearly', startDate:'2024-02-29', category:'娱乐', note:'年费', accountId:'cash' };
+assert.equal(nextRecurringDate(yearly,{},new Date(2025,1,1)),'2025-02-28');
+assert.equal(nextRecurringDate(yearly,{'annual|2025-02-28':'posted'},new Date(2025,1,1)),'2026-02-28');
+assert.equal(nextRecurringDate({...yearly,active:false},{},new Date(2025,1,1)),null);
+const due = recurringOccurrences([yearly],{'annual|2024-02-29':'posted'},new Date(2025,2,1));
+assert.deepEqual(due.map(item=>item.date),['2025-02-28']);
+const monthly = {...yearly,id:'monthly',amount:20,frequency:'monthly',startDate:'2026-01-31'};
+assert.equal(nextRecurringDate(monthly,{},new Date(2026,1,1)),'2026-02-28');
+assert.equal(subscriptionMonthly([yearly,monthly,{...monthly,active:false},{...monthly,subscription:false}]),30);
+const forecast = cashFlowForecast({accounts:[{id:'cash',openingBalance:200}],entries:[],recurring:[yearly],recurringAcknowledged:{},cashFlowPlans:[]},new Date(2025,1,1));
+assert.equal(forecast.days.find(day=>day.date==='2025-02-28').balance,80);
+(async()=>{ const ledger={entries:[],budgets:{},recurring:[yearly,monthly],lastEntryAccount:'cash'}; const restored=await readBackup(await createBackup(ledger,[],'test-password'),'test-password');assert.deepEqual(restored.data,ledger);console.log('subscription recurrence and backup: passed'); })().catch(error=>{console.error(error);process.exitCode=1});

@@ -84,7 +84,7 @@
           if (date > todayText && !ledger.recurringAcknowledged?.[`${rule.id}|${date}`]) events.push({ date, label: rule.note || '周期账目', delta: rule.type === 'income' ? Number(rule.amount) : -Number(rule.amount), kind: 'recurring' });
         }
       } else {
-        for (let offset = 0; offset <= (end.getFullYear() - year) * 12 + end.getMonth() - (month - 1); offset++) {
+        for (let offset = 0; offset <= (end.getFullYear() - year) * 12 + end.getMonth() - (month - 1); offset += rule.frequency === 'yearly' ? 12 : 1) {
           const due = new Date(year, month - 1 + offset, Math.min(day, new Date(year, month + offset, 0).getDate()));
           const date = dateText(due);
           if (date > todayText && !ledger.recurringAcknowledged?.[`${rule.id}|${date}`]) events.push({ date, label: rule.note || '周期账目', delta: rule.type === 'income' ? Number(rule.amount) : -Number(rule.amount), kind: 'recurring' });
@@ -100,6 +100,28 @@
       days.push({ date: day, events: items, balance: running });
     }
     return { startBalance, days };
+  }
+  function nextRecurringDate(rule, acknowledged = {}, today = new Date()) {
+    if (rule.active === false || !/^\d{4}-\d{2}-\d{2}$/.test(rule.startDate || '')) return null;
+    const [year, month, day] = rule.startDate.split('-').map(Number);
+    const current = dateText(today);
+    if (rule.frequency === 'weekly') {
+      const due = new Date(year, month - 1, day);
+      const gap = Math.max(0, Math.floor((new Date(today.getFullYear(), today.getMonth(), today.getDate()) - due) / 604800000));
+      due.setDate(due.getDate() + gap * 7);
+      for (let i = 0; i < 10000; i++, due.setDate(due.getDate() + 7)) if (dateText(due) >= current && !acknowledged[`${rule.id}|${dateText(due)}`]) return dateText(due);
+    } else {
+      const step = rule.frequency === 'yearly' ? 12 : 1;
+      const elapsed = Math.max(0, (today.getFullYear() - year) * 12 + today.getMonth() - month + 1);
+      for (let offset = Math.floor(elapsed / step) * step; offset < elapsed + 12000; offset += step) {
+        const due = new Date(year, month - 1 + offset, Math.min(day, new Date(year, month + offset, 0).getDate()));
+        if (dateText(due) >= current && !acknowledged[`${rule.id}|${dateText(due)}`]) return dateText(due);
+      }
+    }
+    return null;
+  }
+  function subscriptionMonthly(rules) {
+    return rules.filter(rule => rule.subscription && rule.active !== false).reduce((sum, rule) => sum + Number(rule.amount) * (rule.frequency === 'yearly' ? 1 / 12 : rule.frequency === 'weekly' ? 52 / 12 : 1), 0);
   }
   function reconcileDifference(account, entries, actual) {
     if (!Number.isFinite(Number(actual))) throw new Error('实际余额无效');
@@ -147,7 +169,7 @@
         }
       } else {
         const months = (end.getFullYear() - year) * 12 + end.getMonth() - (month - 1);
-        for (let offset = 0; offset <= months; offset++) {
+        for (let offset = 0; offset <= months; offset += rule.frequency === 'yearly' ? 12 : 1) {
           const due = new Date(year, month - 1 + offset, Math.min(day, new Date(year, month + offset, 0).getDate()));
           if (due < start || due > end) continue;
           const date = dateText(due);
@@ -157,7 +179,7 @@
     }
     return result.sort((a, b) => a.date.localeCompare(b.date));
   }
-  const api = { possibleDuplicates, recurringOccurrences, accountBalance, accountBalanceAsOf, projectNet, receivableOutstanding, cashFlowForecast, reconcileDifference, annualPlanProgress, daysWithoutEntry, classifyImport, expenseParts, categoryNet, netExpense, validSplits, refundAvailable };
+  const api = { nextRecurringDate, subscriptionMonthly, possibleDuplicates, recurringOccurrences, accountBalance, accountBalanceAsOf, projectNet, receivableOutstanding, cashFlowForecast, reconcileDifference, annualPlanProgress, daysWithoutEntry, classifyImport, expenseParts, categoryNet, netExpense, validSplits, refundAvailable };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.JianjiFeatures = api;
 })(typeof window !== 'undefined' ? window : globalThis);
