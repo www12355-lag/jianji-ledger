@@ -1675,6 +1675,14 @@ function showAppLock(locked) {
   document.querySelector('main').inert = locked;
   $('add').inert = locked;
   document.querySelector('.bottom-nav').inert = locked;
+  document.querySelectorAll('.modalback').forEach(modal => { modal.inert = locked; });
+}
+async function refreshAppLockSession() {
+  if (!onAndroid() || !appLockEnabled) return;
+  try {
+    const state = await window.Capacitor.nativePromise('AppLock', 'sessionState', {});
+    showAppLock(Boolean(state.locked));
+  } catch { showAppLock(true); }
 }
 $('unlockApp').onclick = async () => {
   $('unlockApp').disabled = true;
@@ -1695,7 +1703,8 @@ $('appLockSetting').onclick = async () => {
     toast(appLockEnabled ? '应用锁已开启，下次打开简记时生效' : '应用锁已关闭');
   } catch (error) { toast(error.message || '应用锁设置失败'); }
 };
-document.addEventListener('visibilitychange', () => { if (document.hidden && appLockEnabled) showAppLock(true); });
+document.addEventListener('visibilitychange', refreshAppLockSession);
+window.addEventListener('jianji-app-lock-state', refreshAppLockSession);
 document.addEventListener('visibilitychange', () => { if (document.hidden && autoBackupTimer) scheduleAutoBackup(0); });
 async function loadLedger() {
   try {
