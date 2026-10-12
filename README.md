@@ -58,3 +58,11 @@ Android 版可选择系统文件目录并设置自动备份密码。密码由 An
 ## 使用
 
 网页可直接打开根目录的 `index.html`，或通过 GitHub Pages 访问发布页面。根目录的 `index.html`、`app.js`、`bill-import.js`、`ledger-features.js`、`backup-tools.js`、`csv-export.js`、`ocr-tools.js`、`ledger-store.js`、`styles.css` 和 `assets/` 是网页发布文件；`dist/` 是打包进 Android App 的对应页面。修改页面后，需要同步 `dist/` 中的文件并运行 `npm run android:sync`，再构建 Android 包。
+
+## 简记 1.8 更新
+
+- 暖白底与柔和紫色，首页卡片、导航和功能入口统一间距与线条图标。
+- 记账金额突出显示，类别改为图标选择，附加字段保持折叠。
+- 功能管理入口直接打开对应工具，收支明细采用更紧凑的账单排版。
+- 储蓄目标：名称、目标金额、选填日期、分次存入、编辑、删除、撤销存入与备份恢复。首页显示首个未完成目标。
+- 储蓄存入只更新目标进度，不会生成收支或改变账户余额。每月参考金额按含本月的剩余日历月平均计算。

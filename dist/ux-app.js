@@ -4,6 +4,7 @@ function featureTools() {
     ['plan','cash','▦','现金流日历','按计划预测未来 30 天每天的账户余额。','cashFlowCard'],
     ['plan','annual','◷','年度计划','为保险、年费或旅行提前预留费用。','annualCard'],
     ['plan','subscriptions','↻','订阅管理','集中查看会员和软件订阅、月度费用与扣费日期。','', 'subscriptions'],
+    ['plan','savings','savings','储蓄目标','为旅行、应急金或愿望积攒资金，查看进度与每月参考金额。','', 'savings'],
     ['daily','recurring','◷','周期账目','房租等固定收支到期后，由你确认入账。','planningCard'],
     ['daily','projects','◇','项目花销','将旅行、装修等不同类别的花销汇总到一起。','projectCard'],
     ['daily','loans','↔','借出与待收款','查看借给谁、剩余待收款和分次还款记录。','receivableCard'],
@@ -19,10 +20,11 @@ function featureTools() {
   ].filter(tool => onAndroid() || !['payment','lock'].includes(tool[1]));
 }
 function setupFeatureMenu() {
+  setupSavings();
   for (const id of ['budgetCard','cashFlowCard','annualCard','budgetAlertCard','planningCard','projectCard','receivableCard','paymentCard','missingCheckCard','settingsCard']) $('featureStorage').append($(id));
   for (const [group, panel] of [['plan','featurePlan'],['daily','featureDaily'],['manage','featureManage']]) {
     const grid = document.createElement('div'); grid.className = 'tool-grid';
-    grid.innerHTML = featureTools().filter(tool => tool[0] === group).map(tool => `<button type="button" data-tool="${tool[1]}"><span aria-hidden="true">${tool[2]}</span><b>${tool[3]}</b></button>`).join('');
+    grid.innerHTML = featureTools().filter(tool => tool[0] === group).map(tool => `<button type="button" data-tool="${tool[1]}"><span aria-hidden="true">${uiIcon(tool[1])}</span><b>${tool[3]}</b></button>`).join('');
     grid.onclick = event => { const button = event.target.closest('[data-tool]'); if (button) openTool(button.dataset.tool); };
     $(panel).append(grid);
   }
@@ -42,6 +44,7 @@ function setupFeatureMenu() {
     const rule = data.recurring.find(item => item.id === $('subscriptionLink').value);
     if (rule) fillSubscriptionForm(rule); else resetSubscriptionForm();
   };
+  showFeatureGroup('plan');
 }
 function showFeatureGroup(group) {
   for (const [name,panel] of [['plan','featurePlan'],['daily','featureDaily'],['manage','featureManage']]) $(panel).hidden = name !== group;
@@ -50,6 +53,7 @@ function showFeatureGroup(group) {
 }
 function openTool(id) {
   const tool = featureTools().find(item => item[1] === id); if (!tool) return;
+  if (tool[6]) { if (tool[6] === 'subscriptions') openSubscriptions(); else if (tool[6] === 'savings') openSavings(); else $(tool[6]).click(); return; }
   const host = $('featureDetailContent');
   for (const child of [...host.children]) if (child.classList.contains('card')) $('featureStorage').append(child);
   host.replaceChildren(); $('featureDetailTitle').textContent = tool[3]; $('featureDetailHelp').textContent = tool[4];

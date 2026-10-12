@@ -31,6 +31,7 @@ function normalizeData() {
   if (!Array.isArray(data.importRules)) data.importRules = [];
   if (!Array.isArray(data.templates)) data.templates = [];
   if (!Array.isArray(data.annualPlans)) data.annualPlans = [];
+  if (!Array.isArray(data.savingsGoals)) data.savingsGoals = [];
   if (!Array.isArray(data.cashFlowPlans)) data.cashFlowPlans = [];
   if (!Array.isArray(data.projects)) data.projects = [];
   if (!Array.isArray(data.receivables)) data.receivables = [];
@@ -96,7 +97,7 @@ async function loadVisiblePhotos() {
 }
 function renderRecordList(id, list, emptyText) {
   const container = $(id);
-  container.innerHTML = list.map((e, index) => `${id === 'records' && (index === 0 || list[index - 1].date !== e.date) ? dayHeading(e.date, list) : ''}<div class="record"><div class="icon ${toneClass(e.type === 'expense' ? e.category : e.type === 'refund' ? 'income' : e.type)}">${iconMarkup(e.type === 'expense' ? e.category : e.type === 'refund' ? 'income' : e.type)}</div><div class="recordtext"><b></b><small></small></div>${e.photoId ? `<img class="record-photo" data-photo-id="${escapeHtml(e.photoId)}" alt="记录图片" hidden>` : ''}<div class="amount ${e.type === 'income' || e.type === 'refund' ? 'income' : e.type === 'excluded' ? 'excluded' : ''}">${e.type === 'income' || e.type === 'refund' ? '+' : e.type === 'excluded' ? '' : '−'}${money(e.amount)}</div><div class="actions">${e.type === 'expense' ? `<button data-refund="${escapeHtml(e.id)}" aria-label="为这笔支出记退款">退款</button>` : ''}<button data-edit="${escapeHtml(e.id)}" aria-label="编辑记录">编辑</button><button data-delete="${escapeHtml(e.id)}" aria-label="删除记录">×</button></div></div>`).join('') || `<div class="empty">${emptyText}</div>`;
+  container.innerHTML = list.map((e, index) => `${id === 'records' && (index === 0 || list[index - 1].date !== e.date) ? dayHeading(e.date, list) : ''}<div class="record"><div class="icon ${toneClass(e.type === 'expense' ? e.category : e.type === 'refund' ? 'income' : e.type)}">${iconMarkup(e.type === 'expense' ? e.category : e.type === 'refund' ? 'income' : e.type)}</div><div class="recordtext"><b></b><small></small></div>${e.photoId ? `<img class="record-photo" data-photo-id="${escapeHtml(e.photoId)}" alt="记录图片" hidden>` : ''}<div class="amount ${e.type === 'income' || e.type === 'refund' ? 'income' : e.type === 'excluded' ? 'excluded' : ''}">${e.type === 'income' || e.type === 'refund' ? '+' : e.type === 'excluded' ? '' : '−'}${money(e.amount)}</div><details class="record-menu"><summary aria-label="账目操作">${uiIcon('more')}</summary><div class="actions">${e.type === 'expense' ? `<button data-refund="${escapeHtml(e.id)}" aria-label="为这笔支出记退款">退款</button>` : ''}<button data-edit="${escapeHtml(e.id)}" aria-label="编辑记录">编辑</button><button data-delete="${escapeHtml(e.id)}" aria-label="删除记录">删除</button></div></details></div>`).join('') || `<div class="empty">${emptyText}</div>`;
   [...container.querySelectorAll('.record')].forEach((row, index) => {
     const entry = list[index];
     row.querySelector('b').textContent = entry.note || (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '月度收入' : entry.type === 'refund' ? '退款' : Array.isArray(entry.splits) && entry.splits.length ? '多类别支出' : entry.category);
@@ -201,6 +202,7 @@ function render() {
   renderProjects();
   renderReceivables();
   renderTodo();
+  renderSavings();
   renderRecordList('recentRecords', list.slice(0, 3), '这个月还没有记录，点「记一笔」开始');
   renderRecordList('records', filtered, filtered.length ? '' : detailFilter === 'all' ? '这个月还没有记录，点「记一笔」开始' : '这个月没有这类记录');
   renderStats(list, income, expense);
@@ -219,7 +221,7 @@ function switchPage(page, updateHash = true) {
   if (updateHash) location.hash = activePage;
   window.scrollTo(0, 0);
 }
-function open(id) { if (id !== 'featureDetailModal') close('featureDetailModal'); $(id).classList.add('show'); }
+function open(id) { if (id === 'entryModal') renderEntryCategories(); if (id !== 'featureDetailModal') close('featureDetailModal'); $(id).classList.add('show'); }
 function close(id) { $(id).classList.remove('show'); }
 function setType(type) {
   entryType = type;
@@ -308,6 +310,7 @@ function refreshCategoryUI() {
     if (cats.includes(old)) select.value = old;
   }
   $('categoryShortcuts').innerHTML = preferredCategories().map(category => `<button type="button" class="category-shortcut ${toneClass(category)}" data-quick-category="${escapeHtml(category)}" aria-label="记录${escapeHtml(category)}支出"><span class="shortcut-icon">${iconMarkup(category)}</span><span>${escapeHtml(category)}</span></button>`).join('');
+  renderEntryCategories();
   $('customCategoryIcon').innerHTML = baseCats.map(category => `<option value="${category}">${category}</option>`).join('');
 }
 function renderCustomCategories() {
@@ -423,7 +426,7 @@ function updateMerchantRuleSuggestion() {
 }
 $('entryMerchant').oninput = updateMerchantRuleSuggestion;
 $('entryNote').oninput = updateMerchantRuleSuggestion;
-$('applyMerchantRule').onclick = () => { if (suggestedMerchantRule) { $('entryCategory').value = suggestedMerchantRule.category; $('merchantRuleSuggestion').hidden = true; } };
+$('applyMerchantRule').onclick = () => { if (suggestedMerchantRule) { $('entryCategory').value = suggestedMerchantRule.category; renderEntryCategories(); $('merchantRuleSuggestion').hidden = true; } };
 $('add').onclick = () => openNewEntry();
 $('heroAdd').onclick = () => openNewEntry();
 $('categoryShortcuts').onclick = event => {

@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#101827">
   <title>简记 · 每一天都清楚</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="design.css">
 </head>
 <body>
   <main class="app">
@@ -20,7 +21,7 @@
 
     <section class="page" id="homePage" aria-label="首页">
       <section class="hero">
-        <div class="hero-top"><span class="eyebrow">本月结余</span><span class="hero-mark" aria-hidden="true">简记 · 月度账本</span></div>
+        <div class="hero-top"><span class="eyebrow">本月结余</span><span class="hero-mark" aria-hidden="true">每一天，都清楚</span></div>
         <div class="balance" id="balance">¥ 0.00</div>
         <div class="sub">
           <div><span>本月收入</span><b id="income">¥ 0.00</b></div>
@@ -28,6 +29,7 @@
         </div>
         <button class="hero-action" id="heroAdd" type="button">＋ 记一笔</button>
       </section>
+      <button id="homeSavings" class="savings-home" type="button" hidden></button>
       <button id="homeTodo" class="home-todo" type="button" hidden></button>
       <section class="quick-card" aria-label="分类速记">
         <div class="cardhead"><div><h2>分类速记</h2><p>选择类别，快速记一笔</p></div></div>
@@ -161,9 +163,9 @@
     <div class="modalhead"><h2 id="entryModalTitle">记一笔</h2><button class="close" data-close="entryModal" aria-label="关闭">×</button></div>
     <div class="seg"><button id="expenseTab" class="active">支出</button><button id="incomeTab">收入</button><button id="excludedTab">不计收支</button></div>
     <form id="entryForm"><div class="entry-fields">
-      <label class="field">金额<input id="entryAmount" type="number" min="0.01" step="0.01" placeholder="0.00" required></label>
+      <label class="field amount-field">金额<span class="amount-input"><input id="entryAmount" inputmode="decimal" type="number" min="0.01" step="0.01" placeholder="0.00" required></span></label>
       <label class="field">日期<input id="entryDate" type="date" required></label>
-      <label class="field" id="categoryField">类别<select id="entryCategory"></select></label>
+      <div class="field" id="categoryField">类别<select id="entryCategory" hidden aria-label="类别"></select><div id="entryCategoryChoices" class="entry-category-grid" role="group" aria-label="选择支出类别"></div></div>
       <label class="field">账户<select id="entryAccount"></select></label>
       <details id="entryMore" class="entry-more"><summary>更多选项 <span>备注、图片、项目、拆分</span></summary>
       <div id="splitField" hidden><label class="all-months"><input type="checkbox" id="splitEnabled"> 这笔支出分到多个类别</label><div id="splitRows"></div><button type="button" class="quiet-button" id="addSplit" hidden>添加类别</button><p class="import-help" id="splitRemaining" hidden></p></div>
@@ -299,6 +301,8 @@
     <p class="import-help">删除的账目会保留在本机，直到你手动永久删除。恢复后会重新计入统计。</p>
     <div id="trashList" class="settings-list"></div>
   </div></div>
+  <div class="modalback" id="savingsModal"><div class="modal"><div class="modalhead"><h2>储蓄目标</h2><button class="close" data-close="savingsModal" aria-label="关闭">×</button></div><div id="savingsSummary" class="savings-summary"></div><p class="import-help">记录你为目标留出的资金。这里的存入只更新进度，不会扣减账户或新增支出。</p><div id="savingsList"></div><div class="backup-divider">创建或编辑目标</div><form id="savingsForm"><label class="field">目标名称<input id="savingsName" maxlength="40" placeholder="例如：旅行基金" required></label><label class="field">目标金额<input id="savingsTarget" type="number" inputmode="decimal" min="0.01" step="0.01" required></label><label class="field">目标日期（选填）<input id="savingsDeadline" type="date"></label><button id="saveSavingsGoal" class="primary">创建目标</button><button type="button" class="quiet-button" id="cancelSavingsEdit" hidden>取消编辑</button></form></div></div>
+  <div class="modalback" id="savingsDepositModal"><div class="modal"><div class="modalhead"><h2 id="savingsDepositTitle">存入一笔</h2><button class="close" data-close="savingsDepositModal" aria-label="关闭">×</button></div><p class="import-help">仅记录已留出的储蓄金额，不会重复生成收支账目。</p><form id="savingsDepositForm"><label class="field">存入金额<input id="savingsDepositAmount" type="number" inputmode="decimal" min="0.01" step="0.01" required></label><label class="field">日期<input id="savingsDepositDate" type="date" required></label><label class="field">备注（选填）<input id="savingsDepositNote" maxlength="60" placeholder="例如：本月结余"></label><button class="primary">确认存入</button></form></div></div>
   <div class="toast" id="toast"></div>
   <div class="app-lock" id="appLockOverlay"><div><h2>简记已锁定</h2><p>使用手机的指纹、面容或屏幕锁继续</p><button id="unlockApp" type="button">解锁简记</button><small id="appLockStatus" aria-live="polite"></small></div></div>
   <script src="bill-import.js"></script>
@@ -307,6 +311,8 @@
   <script src="csv-export.js"></script>
   <script src="ocr-tools.js"></script>
   <script src="ledger-store.js"></script>
+  <script src="savings.js"></script>
+  <script src="savings-app.js"></script>
   <script src="ux-app.js"></script>
   <script src="app.js"></script>
 </body>
