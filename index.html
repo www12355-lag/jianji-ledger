@@ -29,6 +29,7 @@
         </div>
         <button class="hero-action" id="heroAdd" type="button">＋ 记一笔</button>
       </section>
+      <div id="homeDraft" class="draft-banner" hidden><span><b id="draftSummary"></b><small>已自动保留，可继续填写</small></span><button type="button" id="resumeDraft">继续</button><button type="button" id="discardDraft">清除</button></div>
       <button id="homeSavings" class="savings-home" type="button" hidden></button>
       <button id="homeTodo" class="home-todo" type="button" hidden></button>
       <section class="quick-card" aria-label="分类速记">
@@ -115,6 +116,8 @@
     <section class="page" id="detailsPage" aria-label="明细" hidden>
       <div class="page-heading"><div><h1>收支明细</h1><p>按月份查看每一笔收支</p></div><span class="muted" id="count"></span></div>
       <button class="import-open" id="openImport">导入支付宝 / 微信账单</button>
+      <div class="search-toolbar"><input id="recordSearch" type="search" placeholder="搜索备注、商户" aria-label="搜索记录"><button id="toggleDetailFilters" type="button" aria-expanded="false" aria-controls="advancedFilters">筛选</button></div>
+      <div id="advancedFilters" class="advanced-filters" hidden>
       <div class="filters" aria-label="记录筛选">
         <button class="filter active" data-filter="all" aria-pressed="true">全部</button>
         <button class="filter" data-filter="expense" aria-pressed="false">支出/退款</button>
@@ -122,12 +125,12 @@
         <button class="filter" data-filter="excluded" aria-pressed="false">不计收支</button>
       </div>
       <div class="detail-search">
-        <input id="recordSearch" type="search" placeholder="搜索备注、商户" aria-label="搜索记录">
         <select id="recordCategory" aria-label="按类别筛选"><option value="">全部类别</option></select>
         <select id="recordSource" aria-label="按来源筛选"><option value="">全部来源</option><option value="manual">手动记录</option><option value="微信">微信</option><option value="支付宝">支付宝</option></select>
         <select id="recordProject" aria-label="按项目标签筛选"><option value="">全部项目</option></select>
       </div>
       <label class="all-months"><input id="allMonths" type="checkbox"> 搜索所有月份</label>
+      </div>
       <div class="detail-summary"><span id="filteredTotals"></span><button type="button" class="link" id="clearFilters">清空筛选</button></div>
       <section class="card detail-card"><div class="record-list" id="records"></div></section>
     </section>
@@ -301,8 +304,11 @@
     <p class="import-help">删除的账目会保留在本机，直到你手动永久删除。恢复后会重新计入统计。</p>
     <div id="trashList" class="settings-list"></div>
   </div></div>
-  <div class="modalback" id="savingsModal"><div class="modal"><div class="modalhead"><h2>储蓄目标</h2><button class="close" data-close="savingsModal" aria-label="关闭">×</button></div><div id="savingsSummary" class="savings-summary"></div><p class="import-help">记录你为目标留出的资金。这里的存入只更新进度，不会扣减账户或新增支出。</p><div id="savingsList"></div><div class="backup-divider">创建或编辑目标</div><form id="savingsForm"><label class="field">目标名称<input id="savingsName" maxlength="40" placeholder="例如：旅行基金" required></label><label class="field">目标金额<input id="savingsTarget" type="number" inputmode="decimal" min="0.01" step="0.01" required></label><label class="field">目标日期（选填）<input id="savingsDeadline" type="date"></label><button id="saveSavingsGoal" class="primary">创建目标</button><button type="button" class="quiet-button" id="cancelSavingsEdit" hidden>取消编辑</button></form></div></div>
-  <div class="modalback" id="savingsDepositModal"><div class="modal"><div class="modalhead"><h2 id="savingsDepositTitle">存入一笔</h2><button class="close" data-close="savingsDepositModal" aria-label="关闭">×</button></div><p class="import-help">仅记录已留出的储蓄金额，不会重复生成收支账目。</p><form id="savingsDepositForm"><label class="field">存入金额<input id="savingsDepositAmount" type="number" inputmode="decimal" min="0.01" step="0.01" required></label><label class="field">日期<input id="savingsDepositDate" type="date" required></label><label class="field">备注（选填）<input id="savingsDepositNote" maxlength="60" placeholder="例如：本月结余"></label><button class="primary">确认存入</button></form></div></div>
+  <div class="modalback" id="savingsModal"><div class="modal"><div class="modalhead"><h2>储蓄目标</h2><button class="close" data-close="savingsModal" aria-label="关闭">×</button></div><div id="savingsSummary" class="savings-summary"></div><p class="import-help">记录你为目标留出的资金。这里的存入只更新进度，不会扣减账户或新增支出。</p><button id="newSavingsGoal" class="primary" type="button">新建目标</button><div id="savingsList"></div></div></div>
+  <div class="modalback" id="savingsDepositModal"><div class="modal"><div class="modalhead"><h2 id="savingsDepositTitle">存入一笔</h2><button class="close" data-back-savings aria-label="关闭">×</button></div><p class="import-help">仅记录已留出的储蓄金额，不会重复生成收支账目。</p><form id="savingsDepositForm"><label class="field">存入金额<input id="savingsDepositAmount" type="number" inputmode="decimal" min="0.01" step="0.01" required></label><label class="field">日期<input id="savingsDepositDate" type="date" required></label><label class="field">备注（选填）<input id="savingsDepositNote" maxlength="60" placeholder="例如：本月结余"></label><button class="primary">确认存入</button></form></div></div>
+  <div class="modalback" id="savingsEditorModal"><div class="modal"><div class="modalhead"><h2 id="savingsEditorTitle">新建储蓄目标</h2><button type="button" class="close" data-back-savings aria-label="返回储蓄目标">×</button></div><form id="savingsForm"><label class="field">目标名称<input id="savingsName" maxlength="40" placeholder="例如：旅行基金" required></label><label class="field">目标金额<input id="savingsTarget" type="number" inputmode="decimal" min="0.01" step="0.01" required></label><label class="field">目标日期（选填）<input id="savingsDeadline" type="date"></label><button id="saveSavingsGoal" class="primary">创建目标</button><button type="button" class="quiet-button" id="cancelSavingsEdit" hidden>取消编辑</button></form></div></div>
+  <div class="modalback" id="savingsDetailModal"><div class="modal"><div class="modalhead"><h2 id="savingsDetailTitle">目标详情</h2><button type="button" class="close" data-back-savings aria-label="返回储蓄目标">×</button></div><div id="savingsDetailContent"></div></div></div>
+  <div class="modalback" id="lockSettingsModal"><div class="modal"><div class="modalhead"><h2>应用锁</h2><button class="close" data-close="lockSettingsModal" aria-label="关闭">×</button></div><p class="import-help">当前状态：<b id="lockEnabledStatus"></b></p><button id="toggleAppLock" class="primary" type="button">开启应用锁</button><label class="field">离开应用多久后锁定<select id="lockDelay"><option value="0">立即锁定</option><option value="30000">离开 30 秒</option><option value="60000">离开 1 分钟</option></select></label><p class="import-help">熄屏和重新启动仍会立即锁定。拍照或选图后直接返回，无需再次解锁。修改设置需系统身份验证。</p></div></div>
   <div class="toast" id="toast"></div>
   <div class="app-lock" id="appLockOverlay"><div><h2>简记已锁定</h2><p>使用手机的指纹、面容或屏幕锁继续</p><button id="unlockApp" type="button">解锁简记</button><small id="appLockStatus" aria-live="polite"></small></div></div>
   <script src="bill-import.js"></script>
@@ -313,7 +319,9 @@
   <script src="ledger-store.js"></script>
   <script src="savings.js"></script>
   <script src="savings-app.js"></script>
+  <script src="draft-store.js"></script>
   <script src="ux-app.js"></script>
+  <script src="comfort-app.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

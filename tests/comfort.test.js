@@ -1,0 +1,12 @@
+const assert=require('node:assert/strict');
+const {formatDate}=require('../comfort-app.js');
+const {meaningful}=require('../draft-store.js');
+assert.equal(formatDate('2026-10-12'),'2026年10月12日');
+assert.equal(formatDate('2026-01-02'),'2026年1月2日');
+assert.equal(formatDate(''),'');
+assert.equal(meaningful({date:'2026-10-12',category:'餐饮',amount:'',note:'',splits:[]}),false);
+assert.equal(meaningful({amount:'0.01'}),true);
+assert.equal(meaningful({note:'午餐'}),true);
+assert.equal(meaningful({hasPhoto:true}),true);
+assert.equal(meaningful({splits:[{category:'餐饮',amount:10}]}),true);
+console.log('Chinese date and draft content checks: passed');

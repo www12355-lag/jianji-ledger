@@ -26,6 +26,7 @@ public class AppLockPlugin extends Plugin {
 
     @Override public void load() {
         session = new AppLockSession(getContext().getSharedPreferences(PREF, 0).getBoolean("enabled", false));
+        session.setDelay(getContext().getSharedPreferences(PREF, 0).getLong("delayMs", 0));
         screenReceiver = new BroadcastReceiver() {
             @Override public void onReceive(Context context, Intent intent) {
                 session.screenOff();
@@ -62,11 +63,25 @@ public class AppLockPlugin extends Plugin {
     @Override protected void handleOnDestroy() {
         if (screenReceiver != null) getContext().unregisterReceiver(screenReceiver);
     }
+    @Override protected void handleOnResume() { session.resumed(); notifyLockState(); }
 
     @PluginMethod public void status(PluginCall call) {
         JSObject result = new JSObject();
         result.put("enabled", getContext().getSharedPreferences(PREF, 0).getBoolean("enabled", false));
+        result.put("delayMs", getContext().getSharedPreferences(PREF, 0).getLong("delayMs", 0));
         call.resolve(result);
+    }
+
+    @PluginMethod public void setDelay(PluginCall call) {
+        Integer delay = call.getInt("delayMs");
+        if (delay == null || (delay != 0 && delay != 30000 && delay != 60000)) { call.reject("锁定时间无效"); return; }
+        if (authenticatedAt == 0 || android.os.SystemClock.elapsedRealtime() - authenticatedAt > 30000) { call.reject("请先完成系统身份验证"); return; }
+        getActivity().runOnUiThread(() -> {
+            getContext().getSharedPreferences(PREF, 0).edit().putLong("delayMs", delay).apply();
+            authenticatedAt = 0;
+            session.setDelay(delay);
+            call.resolve();
+        });
     }
 
     @PluginMethod public void authenticate(PluginCall call) {

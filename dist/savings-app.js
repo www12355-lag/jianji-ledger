@@ -1,3 +1,4 @@
+function goalMarkup(goal){const p=JianjiSavings.progress(goal);return `<article class="goal-card"><div class="goal-head"><b>${escapeHtml(goal.name)}</b><span class="goal-badge">${p.complete?'已达成':p.overdue?'已过目标日期':`${Math.floor(p.percent)}%`}</span></div><div class="track"><div class="fill" style="width:${p.percent}%"></div></div><div class="goal-numbers"><b>${money(p.saved)}</b><span>目标 ${money(goal.target)}</span></div><p>${p.complete?'目标已达成，可以继续积攒。':`还差 ${money(p.remaining)}${goal.deadline?` · 目标日期 ${formatDate(goal.deadline)}`:''}${p.overdue?'，可调整目标日期。':p.monthly!==null?`<br>含本月，平均每月还需 ${money(p.monthly)}`:''}`}</p><div class="goal-actions"><button data-goal-deposit="${escapeHtml(goal.id)}">存入一笔</button><button data-goal-edit="${escapeHtml(goal.id)}">编辑</button><button data-goal-delete="${escapeHtml(goal.id)}">删除</button></div><section class="goal-history"><h3>存入记录（${goal.contributions.length}）</h3><ul>${goal.contributions.slice().reverse().map(item=>`<li><span>${formatDate(item.date)} · ${money(item.amount)}${item.note?` · ${escapeHtml(item.note)}`:''}</span><button data-goal-undo="${escapeHtml(goal.id)}" data-contribution="${escapeHtml(item.id)}">撤销</button></li>`).join('')||'<li>还没有存入记录</li>'}</ul></section></article>`;}
 const toolIconPaths = {
  more:'M5 12h.01 M12 12h.01 M19 12h.01',
  budget:'M3 5h18v14H3z M7 9h4 M7 13h2 M15 9v6 M13 11h4',
@@ -31,7 +32,8 @@ function setupSavings() {
  $('cameraButton').innerHTML=uiIcon('camera')+'拍照'; $('imageButton').innerHTML=uiIcon('image')+'图片或截图';
  $('homeFeatures').firstElementChild.innerHTML=uiIcon('categories');
  $('savingsForm').onsubmit=saveSavingsGoal;
- $('cancelSavingsEdit').onclick=resetSavingsForm;
+ $('cancelSavingsEdit').onclick=()=>{resetSavingsForm();close('savingsEditorModal');openSavings();};
+ $('savingsDetailContent').onclick=handleSavings;
  $('savingsList').onclick=handleSavings;
  $('savingsDepositForm').onsubmit=saveSavingsDeposit;
  $('homeSavings').onclick=openSavings;
@@ -39,12 +41,10 @@ function setupSavings() {
 function resetSavingsForm(){ editingSavingsId=null;$('savingsForm').reset();$('saveSavingsGoal').textContent='创建目标';$('cancelSavingsEdit').hidden=true; }
 function openSavings(){renderSavings();resetSavingsForm();open('savingsModal');}
 function renderSavings() {
+ renderSavingsDetail();
  const goals=data.savingsGoals||[], total=goals.reduce((sum,goal)=>sum+JianjiSavings.progress(goal).saved,0);
  $('savingsSummary').innerHTML=`<small>为想要的生活，慢慢积攒</small><b>${money(total)}</b><small>${goals.length} 个目标 · ${goals.filter(goal=>JianjiSavings.progress(goal).complete).length} 个已完成</small>`;
- $('savingsList').innerHTML=goals.map(goal=>{
-  const p=JianjiSavings.progress(goal);
-  return `<article class="goal-card"><div class="goal-head"><b>${escapeHtml(goal.name)}</b><span class="goal-badge">${p.complete?'已达成':p.overdue?'已过目标日期':`${Math.floor(p.percent)}%`}</span></div><div class="track"><div class="fill" style="width:${p.percent}%"></div></div><div class="goal-numbers"><b>${money(p.saved)}</b><span>目标 ${money(goal.target)}</span></div><p>${p.complete?'目标已达成，可以继续积攒。':`还差 ${money(p.remaining)}${goal.deadline?` · 目标日期 ${escapeHtml(goal.deadline)}`:''}${p.overdue?'，可调整目标日期。':p.monthly!==null?`<br>含本月，平均每月还需 ${money(p.monthly)}`:''}`}</p><div class="goal-actions"><button data-goal-deposit="${escapeHtml(goal.id)}">存入一笔</button><button data-goal-edit="${escapeHtml(goal.id)}">编辑</button><button data-goal-delete="${escapeHtml(goal.id)}">删除</button></div><details class="goal-history"><summary>存入记录（${goal.contributions.length}）</summary><ul>${goal.contributions.slice().reverse().map(item=>`<li><span>${escapeHtml(item.date)} · ${money(item.amount)}${item.note?` · ${escapeHtml(item.note)}`:''}</span><button data-goal-undo="${escapeHtml(goal.id)}" data-contribution="${escapeHtml(item.id)}">撤销</button></li>`).join('')||'<li>还没有存入记录</li>'}</ul></details></article>`;
- }).join('')||'<div class="empty">第一笔储蓄，从一个小目标开始</div>';
+ $('savingsList').innerHTML=goals.map(goal=>{const p=JianjiSavings.progress(goal);return `<button class="goal-preview" type="button" data-goal-detail="${escapeHtml(goal.id)}"><div class="goal-head"><b>${escapeHtml(goal.name)}</b><span class="goal-badge">${p.complete?'已达成':`${Math.floor(p.percent)}%`}</span></div><div class="track"><div class="fill" style="width:${p.percent}%"></div></div><div class="goal-numbers"><span>已存 ${money(p.saved)}</span><span>目标 ${money(goal.target)} ›</span></div></button>`;}).join('')||'<div class="empty">第一笔储蓄，从一个小目标开始</div>';
  $('homeSavings').hidden=!goals.length;
  if(goals.length){const goal=goals.find(g=>!JianjiSavings.progress(g).complete)||goals[0], p=JianjiSavings.progress(goal);$('homeSavings').innerHTML=uiIcon('savings')+`<span><b>${escapeHtml(goal.name)}</b><small>已存 ${money(p.saved)} / ${money(goal.target)} · ${Math.floor(p.percent)}%</small></span><span aria-hidden="true">›</span>`;}
 }
@@ -55,20 +55,21 @@ async function saveSavingsGoal(event){
  const existing=data.savingsGoals.find(g=>g.id===editingSavingsId);
  if(!existing&&data.savingsGoals.length>=100)return toast('最多创建 100 个目标');
  const goal={id:existing?.id||crypto.randomUUID(),name,target,deadline,contributions:existing?.contributions||[]};
- if(await mutateSavings(()=>{if(existing)data.savingsGoals[data.savingsGoals.indexOf(existing)]=goal;else data.savingsGoals.push(goal);})){resetSavingsForm();toast('目标已保存');}
+ if(await mutateSavings(()=>{if(existing)data.savingsGoals[data.savingsGoals.indexOf(existing)]=goal;else data.savingsGoals.push(goal);})){resetSavingsForm();close('savingsEditorModal');openSavings();toast('目标已保存');}
 }
 let depositSavingsId=null;
 function handleSavings(event){
  const button=event.target.closest('button');if(!button)return;
+ if(button.dataset.goalDetail)return openSavingsDetail(button.dataset.goalDetail);
  const id=button.dataset.goalDeposit||button.dataset.goalEdit||button.dataset.goalDelete||button.dataset.goalUndo, goal=data.savingsGoals.find(g=>g.id===id);if(!goal)return;
- if(button.dataset.goalEdit){editingSavingsId=id;$('savingsName').value=goal.name;$('savingsTarget').value=goal.target;$('savingsDeadline').value=goal.deadline;$('saveSavingsGoal').textContent='保存修改';$('cancelSavingsEdit').hidden=false;$('savingsForm').scrollIntoView({block:'start',behavior:'smooth'});return;}
- if(button.dataset.goalDeposit){depositSavingsId=id;$('savingsDepositForm').reset();$('savingsDepositTitle').textContent='存入 · '+goal.name;$('savingsDepositDate').value=new Date().toLocaleDateString('en-CA');close('savingsModal');open('savingsDepositModal');return;}
- if(button.dataset.goalDelete){if(!confirm('删除这个目标及其存入记录？账本收支不会改变。'))return;mutateSavings(()=>{data.savingsGoals=data.savingsGoals.filter(g=>g.id!==id);}).then(ok=>{if(ok){resetSavingsForm();toast('目标已删除');}});return;}
+ if(button.dataset.goalEdit){editingSavingsId=id;$('savingsName').value=goal.name;$('savingsTarget').value=goal.target;$('savingsDeadline').value=goal.deadline;$('saveSavingsGoal').textContent='保存修改';$('cancelSavingsEdit').hidden=false;openSavingsEditor();return;}
+ if(button.dataset.goalDeposit){depositSavingsId=id;$('savingsDepositForm').reset();$('savingsDepositTitle').textContent='存入 · '+goal.name;$('savingsDepositDate').value=new Date().toLocaleDateString('en-CA');close('savingsModal');close('savingsDetailModal');open('savingsDepositModal');return;}
+ if(button.dataset.goalDelete){if(!confirm('删除这个目标及其存入记录？账本收支不会改变。'))return;mutateSavings(()=>{data.savingsGoals=data.savingsGoals.filter(g=>g.id!==id);}).then(ok=>{if(ok){resetSavingsForm();close('savingsDetailModal');openSavings();toast('目标已删除');}});return;}
  if(button.dataset.goalUndo){if(!confirm('撤销这笔存入记录？'))return;mutateSavings(()=>{goal.contributions=goal.contributions.filter(c=>c.id!==button.dataset.contribution);}).then(ok=>{if(ok)toast('存入已撤销');});}
 }
 async function saveSavingsDeposit(event){
  event.preventDefault();const goal=data.savingsGoals.find(g=>g.id===depositSavingsId),amount=Number($('savingsDepositAmount').value),date=$('savingsDepositDate').value;
  if(!goal||!Number.isFinite(amount)||amount<=0||!date)return toast('请填写有效金额和日期');
  if(goal.contributions.length>=10000)return toast('此目标存入记录已达到上限');
- if(await mutateSavings(()=>goal.contributions.push({id:crypto.randomUUID(),amount,date,note:$('savingsDepositNote').value.trim()}))){close('savingsDepositModal');open('savingsModal');toast('已记录存入');}
+ if(await mutateSavings(()=>goal.contributions.push({id:crypto.randomUUID(),amount,date,note:$('savingsDepositNote').value.trim()}))){close('savingsDepositModal');openSavingsDetail(goal.id);toast('已记录存入');}
 }

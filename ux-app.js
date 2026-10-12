@@ -21,6 +21,7 @@ function featureTools() {
 }
 function setupFeatureMenu() {
   setupSavings();
+  setupComfort();
   for (const id of ['budgetCard','cashFlowCard','annualCard','budgetAlertCard','planningCard','projectCard','receivableCard','paymentCard','missingCheckCard','settingsCard']) $('featureStorage').append($(id));
   for (const [group, panel] of [['plan','featurePlan'],['daily','featureDaily'],['manage','featureManage']]) {
     const grid = document.createElement('div'); grid.className = 'tool-grid';
@@ -33,6 +34,7 @@ function setupFeatureMenu() {
     for (const id of ['recordSearch','recordCategory','recordSource','recordProject']) $(id).value = '';
     $('allMonths').checked = false; detailFilter = 'all';
     document.querySelectorAll('[data-filter]').forEach(button => { const selected = button.dataset.filter === 'all'; button.classList.toggle('active',selected); button.setAttribute('aria-pressed',String(selected)); });
+    $('advancedFilters').hidden = true;
     render();
   };
   $('homeTodo').onclick = () => { renderTodo(); open('todoModal'); };
@@ -72,7 +74,7 @@ function renderTodo() {
   const today = new Date().toLocaleDateString('en-CA');
   const current = liveEntries().filter(entry => entry.date.startsWith(today.slice(0,7)));
   const budgets = data.budgets[today.slice(0,7)] || {};
-  const items = due.map(({rule,date}) => ({tool:'recurring',title:rule.note,help:`${date} · 待确认 ${money(rule.amount)}`}));
+  const items = due.map(({rule,date}) => ({tool:'recurring',title:rule.note,help:`${formatDate(date)} · 待确认 ${money(rule.amount)}`}));
   items.push(...pending.map(notice => ({tool:'payment',title:`${notice.source}支付通知`,help:`待核对 ${money(notice.amount)}`})));
   for (const category of cats) if (Number(budgets[category]) > 0 && current.reduce((sum,entry) => sum + JianjiFeatures.categoryNet(entry,category),0) >= Number(budgets[category])) items.push({tool:'budget',title:`${category}已达预算`,help:'查看剩余额度并调整安排'});
   for (const loan of data.receivables) if (!loan.archived && loan.dueDate < today && JianjiFeatures.receivableOutstanding(loan,data.entries) > 0) items.push({tool:'loans',title:`${loan.person}的待收款已逾期`,help:`待收 ${money(JianjiFeatures.receivableOutstanding(loan,data.entries))}`});
@@ -99,7 +101,7 @@ function renderSubscriptions() {
   $('subscriptionList').innerHTML = rules.map(rule => {
     const overdue = due.find(item => item.rule.id === rule.id);
     const next = JianjiFeatures.nextRecurringDate(rule,data.recurringAcknowledged);
-    return `<div class="annual-plan-row"><b>${escapeHtml(rule.note)}</b><p class="import-help">${money(rule.amount)} / ${rule.frequency === 'yearly' ? '年' : rule.frequency === 'weekly' ? '周' : '月'} · ${rule.active === false ? '已暂停' : overdue ? `${overdue.date}待确认` : `下次扣费 ${next || '暂无'}`}</p><div class="annual-plan-actions"><button data-sub-edit="${escapeHtml(rule.id)}">编辑</button><button data-sub-toggle="${escapeHtml(rule.id)}">${rule.active === false ? '恢复' : '暂停'}</button><button data-sub-unlink="${escapeHtml(rule.id)}">移出订阅</button></div></div>`;
+    return `<div class="annual-plan-row"><b>${escapeHtml(rule.note)}</b><p class="import-help">${money(rule.amount)} / ${rule.frequency === 'yearly' ? '年' : rule.frequency === 'weekly' ? '周' : '月'} · ${rule.active === false ? '已暂停' : overdue ? `${formatDate(overdue.date)}待确认` : `下次扣费 ${next ? formatDate(next) : '暂无'}`}</p><div class="annual-plan-actions"><button data-sub-edit="${escapeHtml(rule.id)}">编辑</button><button data-sub-toggle="${escapeHtml(rule.id)}">${rule.active === false ? '恢复' : '暂停'}</button><button data-sub-unlink="${escapeHtml(rule.id)}">移出订阅</button></div></div>`;
   }).join('') || '<div class="empty">还没有订阅，可新建或关联已有周期支出</div>';
   $('subscriptionLink').innerHTML = '<option value="">新建订阅</option>' + data.recurring.filter(rule => rule.type === 'expense' && !rule.subscription).map(rule => `<option value="${escapeHtml(rule.id)}">${escapeHtml(rule.note)} · ${money(rule.amount)}</option>`).join('');
 }

@@ -105,7 +105,7 @@ function renderRecordList(id, list, emptyText) {
     const accountText = entry.transferFrom ? ` · ${accountName(entry.transferFrom)} → ${accountName(entry.transferTo)}` : entry.accountId ? ` · ${accountName(entry.accountId)}` : '';
     const loanText = entry.receivableId ? ` · ${entry.receivableKind === 'loan' ? '借出' : '收回借款'}` : '';
     const projectText = (entry.projectIds || []).map(id => data.projects.find(project => project.id === id)?.name).filter(Boolean).join('、');
-    row.querySelector('small').textContent = entry.date + ' · ' + (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '收入' : entry.type === 'excluded' ? '不计收支' : entry.type === 'refund' ? `${entry.category}退款` : Array.isArray(entry.splits) && entry.splits.length ? entry.splits.map(part => `${part.category}${money(part.amount)}`).join('、') : entry.category) + (entry.merchant ? ` · ${entry.merchant}` : '') + (entry.source ? ` · ${entry.source}` : '') + loanText + accountText + (projectText ? ` · #${projectText}` : '');
+    row.querySelector('small').textContent = formatDate(entry.date) + ' · ' + (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '收入' : entry.type === 'excluded' ? '不计收支' : entry.type === 'refund' ? `${entry.category}退款` : Array.isArray(entry.splits) && entry.splits.length ? entry.splits.map(part => `${part.category}${money(part.amount)}`).join('、') : entry.category) + (entry.merchant ? ` · ${entry.merchant}` : '') + (entry.source ? ` · ${entry.source}` : '') + loanText + accountText + (projectText ? ` · #${projectText}` : '');
   });
 }
 function renderStats(list, income, expense) {
@@ -138,7 +138,7 @@ function renderStats(list, income, expense) {
 }
 function renderPlanning(list, budgets) {
   const due = JianjiFeatures.recurringOccurrences(data.recurring, data.recurringAcknowledged);
-  $('recurringDue').innerHTML = due.length ? due.slice(0, 5).map(({ rule, date }) => `<div class="planning-row"><div><b>${escapeHtml(rule.note)}</b><small>${date} · ${rule.type === 'income' ? '收入' : escapeHtml(rule.category)} · ${money(rule.amount)}</small></div><div class="planning-actions"><button data-recurring-post="${escapeHtml(rule.id)}|${date}">记入</button><button data-recurring-skip="${escapeHtml(rule.id)}|${date}">跳过</button></div></div>`).join('') + (due.length > 5 ? `<p class="muted">还有 ${due.length - 5} 笔待确认</p>` : '') : '<div class="empty">暂无待确认账目；可添加房租、订阅等周期账目</div>';
+  $('recurringDue').innerHTML = due.length ? due.slice(0, 5).map(({ rule, date }) => `<div class="planning-row"><div><b>${escapeHtml(rule.note)}</b><small>${formatDate(date)} · ${rule.type === 'income' ? '收入' : escapeHtml(rule.category)} · ${money(rule.amount)}</small></div><div class="planning-actions"><button data-recurring-post="${escapeHtml(rule.id)}|${date}">记入</button><button data-recurring-skip="${escapeHtml(rule.id)}|${date}">跳过</button></div></div>`).join('') + (due.length > 5 ? `<p class="muted">还有 ${due.length - 5} 笔待确认</p>` : '') : '<div class="empty">暂无待确认账目；可添加房租、订阅等周期账目</div>';
   const alerts = cats.flatMap(category => {
     const limit = Number(budgets[category]);
     if (!Number.isFinite(limit) || limit <= 0) return [];
@@ -203,6 +203,7 @@ function render() {
   renderReceivables();
   renderTodo();
   renderSavings();
+  renderDraftBanner(); renderDetailFilterState(); refreshDateLabels();
   renderRecordList('recentRecords', list.slice(0, 3), '这个月还没有记录，点「记一笔」开始');
   renderRecordList('records', filtered, filtered.length ? '' : detailFilter === 'all' ? '这个月还没有记录，点「记一笔」开始' : '这个月没有这类记录');
   renderStats(list, income, expense);
@@ -221,8 +222,8 @@ function switchPage(page, updateHash = true) {
   if (updateHash) location.hash = activePage;
   window.scrollTo(0, 0);
 }
-function open(id) { if (id === 'entryModal') renderEntryCategories(); if (id !== 'featureDetailModal') close('featureDetailModal'); $(id).classList.add('show'); }
-function close(id) { $(id).classList.remove('show'); }
+function open(id) { refreshDateLabels(); if (id === 'entryModal') { renderEntryCategories(); beginEntryDraftTracking(); } if (id !== 'featureDetailModal') close('featureDetailModal'); $(id).classList.add('show'); }
+function close(id) { if (id === 'entryModal') persistEntryDraft(); $(id).classList.remove('show'); }
 function setType(type) {
   entryType = type;
   $('expenseTab').classList.toggle('active', type === 'expense');
@@ -297,7 +298,7 @@ function preferredCategories() {
 }
 function dayHeading(date, list) {
   const today = new Date(), yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-  const label = date === today.toLocaleDateString('en-CA') ? '今天' : date === yesterday.toLocaleDateString('en-CA') ? '昨天' : date;
+  const label = date === today.toLocaleDateString('en-CA') ? '今天' : date === yesterday.toLocaleDateString('en-CA') ? '昨天' : formatDate(date);
   const entries = list.filter(entry => entry.date === date);
   return `<div class="day-heading"><b>${escapeHtml(label)}</b><small>收入 ${money(entries.filter(entry => entry.type === 'income').reduce((sum,entry) => sum + Number(entry.amount),0))} · 净支出 ${money(JianjiFeatures.netExpense(entries))}</small></div>`;
 }
@@ -343,15 +344,15 @@ function renderCashFlow() {
   const end = forecast.days.at(-1)?.balance ?? forecast.startBalance ?? 0;
   const scope = filter ? data.accounts.find(account => account.id === filter)?.name || '所选账户' : '全部账户';
   $('cashFlowSummary').textContent = forecast.startBalance === null ? '还没有设置账户；下方只显示计划变动，无法预测账户余额。' : `${scope}当前账面余额 ${money(forecast.startBalance)}；按计划预计 30 天后 ${money(end)}。计划不会自动入账；未指定账户的记录和计划不计入余额预测。`;
-  $('cashFlowDays').innerHTML = forecast.days.map(day => `<div class="cash-flow-day${day.balance < 0 && forecast.startBalance !== null ? ' negative' : ''}"><b>${escapeHtml(day.date.slice(5))}</b><span>${day.events.length ? day.events.map(item => `${escapeHtml(item.label)} ${item.delta >= 0 ? '+' : '−'}${money(Math.abs(item.delta))}`).join('；') : '—'}</span><strong>${forecast.startBalance === null ? '' : money(day.balance)}</strong></div>`).join('') || '<div class="empty">暂无未来日期</div>';
-  $('cashFlowPlanList').innerHTML = data.cashFlowPlans.map(plan => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(plan.note)}</b><small>${escapeHtml(plan.date)} · ${plan.type === 'income' ? '收入' : '支出'} ${money(plan.amount)} · ${plan.done ? '已完成' : '待发生'}</small></div><button data-cash-edit="${escapeHtml(plan.id)}">编辑</button><button data-cash-toggle="${escapeHtml(plan.id)}">${plan.done ? '重新计划' : '标记完成'}</button><button data-cash-delete="${escapeHtml(plan.id)}">删除</button></div>`).join('') || '<div class="empty">暂无一次性计划收支</div>';
+  $('cashFlowDays').innerHTML = forecast.days.map(day => `<div class="cash-flow-day${day.balance < 0 && forecast.startBalance !== null ? ' negative' : ''}"><b>${escapeHtml(`${Number(day.date.slice(5,7))}月${Number(day.date.slice(8))}日`)}</b><span>${day.events.length ? day.events.map(item => `${escapeHtml(item.label)} ${item.delta >= 0 ? '+' : '−'}${money(Math.abs(item.delta))}`).join('；') : '—'}</span><strong>${forecast.startBalance === null ? '' : money(day.balance)}</strong></div>`).join('') || '<div class="empty">暂无未来日期</div>';
+  $('cashFlowPlanList').innerHTML = data.cashFlowPlans.map(plan => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(plan.note)}</b><small>${escapeHtml(formatDate(plan.date))} · ${plan.type === 'income' ? '收入' : '支出'} ${money(plan.amount)} · ${plan.done ? '已完成' : '待发生'}</small></div><button data-cash-edit="${escapeHtml(plan.id)}">编辑</button><button data-cash-toggle="${escapeHtml(plan.id)}">${plan.done ? '重新计划' : '标记完成'}</button><button data-cash-delete="${escapeHtml(plan.id)}">删除</button></div>`).join('') || '<div class="empty">暂无一次性计划收支</div>';
 }
 function renderReceivables() {
   const openLoans = data.receivables.filter(loan => !loan.archived);
-  $('receivableSummary').innerHTML = openLoans.map(loan => `<div class="budgetrow"><div class="rowtop"><b>${escapeHtml(loan.person)}</b><span>待收 ${money(JianjiFeatures.receivableOutstanding(loan, data.entries))}</span></div><small>约定 ${escapeHtml(loan.dueDate)}${loan.dueDate < new Date().toLocaleDateString('en-CA') && JianjiFeatures.receivableOutstanding(loan, data.entries) > 0 ? ' · 已逾期' : ''}</small></div>`).join('') || '<div class="empty">目前没有待收款</div>';
+  $('receivableSummary').innerHTML = openLoans.map(loan => `<div class="budgetrow"><div class="rowtop"><b>${escapeHtml(loan.person)}</b><span>待收 ${money(JianjiFeatures.receivableOutstanding(loan, data.entries))}</span></div><small>约定 ${escapeHtml(formatDate(loan.dueDate))}${loan.dueDate < new Date().toLocaleDateString('en-CA') && JianjiFeatures.receivableOutstanding(loan, data.entries) > 0 ? ' · 已逾期' : ''}</small></div>`).join('') || '<div class="empty">目前没有待收款</div>';
   $('receivableList').innerHTML = data.receivables.map(loan => {
     const payments = data.entries.filter(entry => !entry.deletedAt && entry.receivableId === loan.id && entry.receivableKind === 'repayment');
-    return `<div class="annual-plan-row"><div class="settings-row-main"><b>${escapeHtml(loan.person)} · 借出 ${money(loan.amount)}</b><small>待收 ${money(JianjiFeatures.receivableOutstanding(loan, data.entries))} · 到期 ${escapeHtml(loan.dueDate)}${loan.archived ? ' · 已归档' : ''}</small></div><div class="annual-plan-actions"><button data-loan-edit="${escapeHtml(loan.id)}">编辑</button><button data-loan-archive="${escapeHtml(loan.id)}">${loan.archived ? '恢复显示' : '归档'}</button>${payments.length ? '' : `<button data-loan-void="${escapeHtml(loan.id)}">撤销借出</button>`}</div>${payments.map(entry => `<div class="loan-payment"><small>${escapeHtml(entry.date)} 收回 ${money(entry.amount)}</small><button data-loan-payment-undo="${escapeHtml(entry.id)}">撤销</button></div>`).join('')}</div>`;
+    return `<div class="annual-plan-row"><div class="settings-row-main"><b>${escapeHtml(loan.person)} · 借出 ${money(loan.amount)}</b><small>待收 ${money(JianjiFeatures.receivableOutstanding(loan, data.entries))} · 到期 ${escapeHtml(formatDate(loan.dueDate))}${loan.archived ? ' · 已归档' : ''}</small></div><div class="annual-plan-actions"><button data-loan-edit="${escapeHtml(loan.id)}">编辑</button><button data-loan-archive="${escapeHtml(loan.id)}">${loan.archived ? '恢复显示' : '归档'}</button>${payments.length ? '' : `<button data-loan-void="${escapeHtml(loan.id)}">撤销借出</button>`}</div>${payments.map(entry => `<div class="loan-payment"><small>${escapeHtml(formatDate(entry.date))} 收回 ${money(entry.amount)}</small><button data-loan-payment-undo="${escapeHtml(entry.id)}">撤销</button></div>`).join('')}</div>`;
   }).join('') || '<div class="empty">还没有借出记录</div>';
   $('repaymentLoan').innerHTML = data.receivables.filter(loan => !loan.archived && JianjiFeatures.receivableOutstanding(loan, data.entries) > 0).map(loan => `<option value="${escapeHtml(loan.id)}">${escapeHtml(loan.person)} · 待收 ${money(JianjiFeatures.receivableOutstanding(loan, data.entries))}</option>`).join('');
 }
@@ -399,7 +400,9 @@ document.querySelectorAll('[data-filter]').forEach(button => button.onclick = ()
   render();
 });
 window.addEventListener('hashchange', () => switchPage(location.hash.slice(1), false));
-function openNewEntry(category = null) {
+function openNewEntry(category = null, restoreDraft = true) {
+  if (restoreDraft && !category && entryDraft) return resumeEntryDraft();
+  persistEntryDraft(); entryDraftId = Date.now() + Math.random();
   editingId = null;
   paymentDraftId = null;
   $('entryModalTitle').textContent = '记一笔';
@@ -579,7 +582,7 @@ $('templateShortcuts').onclick = event => {
   const button = event.target.closest('[data-use-template]');
   const template = data.templates.find(item => item.id === button?.dataset.useTemplate);
   if (!template) return;
-  openNewEntry(template.category && cats.includes(template.category) ? template.category : cats[0]);
+  openNewEntry(template.category && cats.includes(template.category) ? template.category : cats[0], false);
   setType(template.type);
   $('entryAmount').value = template.amount;
   $('entryNote').value = template.note || '';
@@ -791,7 +794,7 @@ let reconcilePending = '';
 function resetReconcile() { reconcilePending = ''; $('reconcileSave').textContent = '核对余额'; $('reconcileResult').textContent = ''; }
 function renderReconcileHistory() {
   const account = data.accounts.find(item => item.id === $('reconcileAccount').value);
-  $('reconcileHistory').innerHTML = (account?.reconciliations || []).slice(-5).reverse().map((item, index) => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(item.date)} · 校正 ${money(item.delta)}</b><small>当时实际余额 ${money(item.actual)}</small></div>${index === 0 ? `<button data-reconcile-undo="${escapeHtml(item.id)}">撤销</button>` : ''}</div>`).join('') || '<div class="empty">暂无余额校正记录</div>';
+  $('reconcileHistory').innerHTML = (account?.reconciliations || []).slice(-5).reverse().map((item, index) => `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(formatDate(item.date))} · 校正 ${money(item.delta)}</b><small>当时实际余额 ${money(item.actual)}</small></div>${index === 0 ? `<button data-reconcile-undo="${escapeHtml(item.id)}">撤销</button>` : ''}</div>`).join('') || '<div class="empty">暂无余额校正记录</div>';
 }
 $('reconcileAccount').onchange = () => { resetReconcile(); renderReconcileHistory(); };
 $('reconcileActual').oninput = resetReconcile;
@@ -1330,7 +1333,7 @@ $('restoreBackup').onclick = async () => {
 };
 function renderTrash() {
   const deleted = data.entries.filter(entry => entry.deletedAt).sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)));
-  $('trashList').innerHTML = deleted.map(entry => `<div class="trash-row"><div class="trash-row-main"><b>${escapeHtml(entry.note || entry.category || '未命名账目')}</b><small>${escapeHtml(entry.date)} · ${money(entry.amount)} · 删除于 ${escapeHtml(String(entry.deletedAt).slice(0, 10))}</small></div><button data-trash-restore="${escapeHtml(entry.id)}">恢复</button><button data-trash-purge="${escapeHtml(entry.id)}">永久删除</button></div>`).join('') || '<div class="empty">没有已删除账目</div>';
+  $('trashList').innerHTML = deleted.map(entry => `<div class="trash-row"><div class="trash-row-main"><b>${escapeHtml(entry.note || entry.category || '未命名账目')}</b><small>${escapeHtml(formatDate(entry.date))} · ${money(entry.amount)} · 删除于 ${escapeHtml(formatDate(String(entry.deletedAt).slice(0, 10)))}</small></div><button data-trash-restore="${escapeHtml(entry.id)}">恢复</button><button data-trash-purge="${escapeHtml(entry.id)}">永久删除</button></div>`).join('') || '<div class="empty">没有已删除账目</div>';
 }
 function historySnapshot(entry) {
   if (!entry) return null;
@@ -1348,7 +1351,7 @@ function renderHistory() {
     const entry = data.entries.find(record => String(record.id) === String(item.recordId));
     const canUndo = !item.undone && latest === item && entry && !entry.receivableId;
     const state = item.after || item.before;
-    return `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(item.action)} · ${escapeHtml(state?.note || state?.category || '未命名账目')}</b><small>${escapeHtml(String(item.time).replace('T', ' ').slice(0, 16))} · ${escapeHtml(state?.date || '')} · ${money(state?.amount || 0)}${item.undone ? ' · 已撤销' : ''}</small></div>${canUndo ? `<button data-history-undo="${escapeHtml(item.id)}">撤销</button>` : ''}</div>`;
+    return `<div class="settings-row"><div class="settings-row-main"><b>${escapeHtml(item.action)} · ${escapeHtml(state?.note || state?.category || '未命名账目')}</b><small>${escapeHtml(String(item.time).replace('T', ' ').slice(0, 16))} · ${escapeHtml(formatDate(state?.date || ''))} · ${money(state?.amount || 0)}${item.undone ? ' · 已撤销' : ''}</small></div>${canUndo ? `<button data-history-undo="${escapeHtml(item.id)}">撤销</button>` : ''}</div>`;
   }).join('') || '<div class="empty">还没有账目变更记录</div>';
 }
 $('openHistory').onclick = () => { renderHistory(); open('historyModal'); };
@@ -1425,11 +1428,15 @@ document.querySelectorAll('[data-close]').forEach(button => button.onclick = () 
 document.querySelectorAll('.modalback').forEach(modal => modal.onclick = e => { if (e.target === modal) close(modal.id); });
 $('entryForm').onsubmit = async e => {
   e.preventDefault();
+  const submitButton = $('entryForm').querySelector('button.primary');
+  if (submitButton.disabled) return;
+  submitButton.disabled = true;
+  try {
   const amount = Number($('entryAmount').value);
   if (!Number.isFinite(amount) || amount <= 0) return;
   const original = editingId === null ? null : data.entries.find(item => String(item.id) === editingId);
   if (editingId !== null && !original) return toast('记录不存在，请重新打开');
-  const entry = { ...original, id: original?.id ?? Date.now() + Math.random(), type: entryType, amount, date: $('entryDate').value, category: entryType === 'expense' ? $('entryCategory').value : '', note: $('entryNote').value.trim(), merchant: entryType === 'expense' ? $('entryMerchant').value.trim() : '', accountId: $('entryAccount').value || '', projectIds: selectedProjectIds() };
+  const entry = { ...original, id: original?.id ?? entryDraftId ?? Date.now() + Math.random(), type: entryType, amount, date: $('entryDate').value, category: entryType === 'expense' ? $('entryCategory').value : '', note: $('entryNote').value.trim(), merchant: entryType === 'expense' ? $('entryMerchant').value.trim() : '', accountId: $('entryAccount').value || '', projectIds: selectedProjectIds() };
   if (entryType === 'expense' && $('rememberMerchant').checked && !entry.merchant) return toast('请先填写商户名称，再记住分类');
   if (entryType === 'expense' && $('splitEnabled').checked) {
     const parts = splitRows();
@@ -1493,11 +1500,14 @@ $('entryForm').onsubmit = async e => {
     paymentDraftId = null;
     refreshPaymentNotices();
   }
+  await discardEntryDraft().catch(() => { entryDraft = null; renderDraftBanner(); });
+  draftBaseline = JSON.stringify(entryDraftSnapshot());
   close('entryModal');
   clearSelectedImage();
   refreshCategoryUI();
   render();
   toast(original ? '记录已更新' : '已保存记录');
+  } finally { submitButton.disabled = false; }
 };
 $('budgetForm').onsubmit = async e => {
   e.preventDefault();
@@ -1521,7 +1531,7 @@ function openRefund(original, refund = null) {
   editingRefundId = refund ? String(refund.id) : null;
   $('refundForm').reset();
   $('refundTitle').textContent = refund ? '编辑退款' : '记录退款';
-  $('refundOriginal').textContent = `关联原支出：${original.note || '未命名支出'} · ${money(original.amount)} · ${original.date}`;
+  $('refundOriginal').textContent = `关联原支出：${original.note || '未命名支出'} · ${money(original.amount)} · ${formatDate(original.date)}`;
   const parts = JianjiFeatures.expenseParts(original);
   $('refundCategory').innerHTML = parts.map(part => `<option value="${escapeHtml(part.category)}">${escapeHtml(part.category)}</option>`).join('');
   $('refundAccount').innerHTML = '<option value="">未指定账户</option>' + data.accounts.map(account => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.name)}</option>`).join('');
@@ -1582,6 +1592,8 @@ async function handleRecordClick(e) {
       $('transferForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
+    persistEntryDraft();
+    entryDraftId = entry.id;
     editingId = String(entry.id);
     paymentDraftId = null;
     $('entryModalTitle').textContent = '编辑记录';
@@ -1653,7 +1665,7 @@ $('paymentNotices').onclick = async event => {
   if (confirmButton) {
     const item = paymentNotices.find(notice => notice.id === confirmButton.dataset.paymentConfirm);
     if (!item) return refreshPaymentNotices();
-    openNewEntry('其他');
+    openNewEntry('其他', false);
     paymentDraftId = item.id;
     $('entryAmount').value = Number(item.amount).toFixed(2);
     $('entryDate').value = new Date(item.receivedAt).toLocaleDateString('en-CA');
@@ -1694,12 +1706,14 @@ $('unlockApp').onclick = async () => {
   } catch (error) { $('appLockStatus').textContent = error.message || '解锁失败，请重试'; }
   finally { $('unlockApp').disabled = false; }
 };
-$('appLockSetting').onclick = async () => {
+$('appLockSetting').onclick = openLockSettings;
+$('toggleAppLock').onclick = async () => {
   try {
     await window.Capacitor.nativePromise('AppLock', 'authenticate', {});
     await window.Capacitor.nativePromise('AppLock', 'setEnabled', { enabled: !appLockEnabled });
     appLockEnabled = !appLockEnabled;
     $('appLockSetting').textContent = appLockEnabled ? '关闭应用锁' : '开启应用锁';
+    renderLockSettings();
     toast(appLockEnabled ? '应用锁已开启，下次打开简记时生效' : '应用锁已关闭');
   } catch (error) { toast(error.message || '应用锁设置失败'); }
 };
@@ -1711,6 +1725,7 @@ async function loadLedger() {
     data = await JianjiStore.initialize();
     normalizeData();
     ledgerLoaded = true;
+    await loadEntryDraft();
     refreshCategoryUI();
     refreshAccountUI();
     refreshProjectUI();
@@ -1729,7 +1744,8 @@ async function start() {
   if (!onAndroid()) { showAppLock(false); return loadLedger(); }
   $('appLockSetting').hidden = false;
   try {
-    appLockEnabled = Boolean((await window.Capacitor.nativePromise('AppLock', 'status', {})).enabled);
+    const lockStatus = await window.Capacitor.nativePromise('AppLock', 'status', {});
+    appLockEnabled = Boolean(lockStatus.enabled); appLockDelayMs = Number(lockStatus.delayMs) || 0;
     $('appLockSetting').textContent = appLockEnabled ? '关闭应用锁' : '开启应用锁';
     if (appLockEnabled) { showAppLock(true); return; }
     showAppLock(false);
