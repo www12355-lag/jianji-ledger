@@ -20,12 +20,17 @@
 
     <section class="page" id="homePage" aria-label="首页">
       <section class="hero">
-        <div class="eyebrow">本月结余</div>
+        <div class="hero-top"><span class="eyebrow">本月结余</span><span class="hero-mark" aria-hidden="true">简记 · 月度账本</span></div>
         <div class="balance" id="balance">¥ 0.00</div>
         <div class="sub">
           <div><span>本月收入</span><b id="income">¥ 0.00</b></div>
           <div><span>本月支出</span><b id="expense">¥ 0.00</b></div>
         </div>
+        <button class="hero-action" id="heroAdd" type="button">＋ 记一笔</button>
+      </section>
+      <section class="quick-card" aria-label="分类速记">
+        <div class="cardhead"><div><h2>分类速记</h2><p>选择类别，快速记一笔</p></div></div>
+        <div class="category-shortcuts" id="categoryShortcuts"></div>
       </section>
       <div class="home-grid">
         <section class="card">
@@ -37,7 +42,20 @@
           <div class="record-list" id="recentRecords"></div>
         </section>
       </div>
-      <p class="foot">数据仅保存在当前浏览器中 · 金额单位：人民币</p>
+      <section class="card planning-card" id="planningCard">
+        <div class="cardhead"><h2>待确认的周期账目</h2><button class="link" id="manageRecurring">管理周期记账</button></div>
+        <div id="recurringDue"></div>
+      </section>
+      <section class="card planning-card" id="budgetAlertCard" hidden>
+        <div class="cardhead"><h2>预算提醒</h2></div>
+        <div id="budgetAlerts"></div>
+      </section>
+      <section class="card tools-card">
+        <div class="cardhead"><h2>账本设置</h2></div>
+        <div class="tool-buttons"><button id="manageAccounts">账户与转账</button><button id="manageCategories">管理分类</button><button id="manageImportRules">导入分类规则</button><button id="openBackup">备份与恢复</button><button id="openTrash">最近删除</button></div>
+        <div id="backupReminder" class="backup-reminder" hidden></div>
+      </section>
+      <p class="foot">账本默认保存在本机，可在“备份与恢复”中迁移 · 金额单位：人民币</p>
     </section>
 
     <section class="page" id="detailsPage" aria-label="明细" hidden>
@@ -47,7 +65,14 @@
         <button class="filter active" data-filter="all" aria-pressed="true">全部</button>
         <button class="filter" data-filter="expense" aria-pressed="false">支出</button>
         <button class="filter" data-filter="income" aria-pressed="false">收入</button>
+        <button class="filter" data-filter="excluded" aria-pressed="false">不计收支</button>
       </div>
+      <div class="detail-search">
+        <input id="recordSearch" type="search" placeholder="搜索备注、商户" aria-label="搜索记录">
+        <select id="recordCategory" aria-label="按类别筛选"><option value="">全部类别</option></select>
+        <select id="recordSource" aria-label="按来源筛选"><option value="">全部来源</option><option value="manual">手动记录</option><option value="微信">微信</option><option value="支付宝">支付宝</option></select>
+      </div>
+      <label class="all-months"><input id="allMonths" type="checkbox"> 搜索所有月份</label>
       <section class="card detail-card"><div class="record-list" id="records"></div></section>
     </section>
 
@@ -73,31 +98,89 @@
   </nav>
 
   <div class="modalback" id="entryModal"><div class="modal">
-    <div class="modalhead"><h2>记一笔</h2><button class="close" data-close="entryModal" aria-label="关闭">×</button></div>
-    <div class="seg"><button id="expenseTab" class="active">支出</button><button id="incomeTab">收入</button></div>
+    <div class="modalhead"><h2 id="entryModalTitle">记一笔</h2><button class="close" data-close="entryModal" aria-label="关闭">×</button></div>
+    <div class="seg"><button id="expenseTab" class="active">支出</button><button id="incomeTab">收入</button><button id="excludedTab">不计收支</button></div>
     <form id="entryForm">
       <label class="field">金额<input id="entryAmount" type="number" min="0.01" step="0.01" placeholder="0.00" required></label>
       <label class="field">日期<input id="entryDate" type="date" required></label>
       <label class="field" id="categoryField">类别<select id="entryCategory"></select></label>
+      <label class="field">账户<select id="entryAccount"></select></label>
       <label class="field">备注<input id="entryNote" maxlength="60" placeholder="例如：午餐"></label>
-      <div class="photo-field"><div class="photo-label">图片（选填）</div><div class="photo-actions"><button type="button" id="cameraButton">📷 拍照</button><button type="button" id="imageButton">▧ 选择图片或截图</button></div><input id="cameraInput" type="file" accept="image/*" capture="environment" hidden><input id="imageInput" type="file" accept="image/*" hidden><div class="photo-selection"><img id="photoPreview" alt="所选图片预览" hidden><span id="photoName">可拍摄物品，也可选择相册里的网购截图</span><button type="button" id="removePhoto" aria-label="移除图片">×</button></div></div>
+      <div class="photo-field"><div class="photo-label">图片（选填）</div><div class="photo-actions"><button type="button" id="cameraButton">📷 拍照</button><button type="button" id="imageButton">▧ 选择图片或截图</button></div><input id="cameraInput" type="file" accept="image/*" capture="environment" hidden><input id="imageInput" type="file" accept="image/*" hidden><div class="photo-selection"><img id="photoPreview" alt="所选图片预览" hidden><span id="photoName">可拍摄物品，也可选择相册里的网购截图</span><button type="button" id="removePhoto" aria-label="移除图片">×</button></div><label id="removeStoredPhotoField" class="all-months" hidden><input id="removeStoredPhoto" type="checkbox"> 删除原图片</label></div>
       <button class="primary">保存记录</button>
     </form>
   </div></div>
   <div class="modalback" id="budgetModal"><div class="modal">
     <div class="modalhead"><h2>设置月度预算</h2><button class="close" data-close="budgetModal" aria-label="关闭">×</button></div>
+    <p id="budgetMonthLabel" class="import-help"></p>
+    <button type="button" class="quiet-button" id="copyPreviousBudgets">复制上月预算到当前月</button>
+    <p id="budgetCopyStatus" class="import-help" aria-live="polite"></p>
     <form id="budgetForm"><label class="field">类别<select id="budgetCategory"></select></label><label class="field">每月额度<input id="budgetAmount" type="number" min="0" step="0.01" required></label><button class="primary">保存额度</button></form>
   </div></div>
   <div class="modalback" id="importModal"><div class="modal import-modal">
     <div class="modalhead"><h2>导入账单</h2><button class="close" data-close="importModal" aria-label="关闭">×</button></div>
-    <p class="import-help">选择微信或支付宝“用于个人对账”导出的 Excel（.xlsx）或 CSV 明细。若收到加密 ZIP，请先用账单密码解压。PDF 暂不支持自动识别。文件只在这台设备上读取。</p>
+    <p class="import-help">选择微信或支付宝“用于个人对账”导出的 Excel（.xlsx）或 CSV 明细。若收到加密 ZIP，请先用账单密码解压。PDF 暂不支持自动识别。文件只在这台设备上读取。最近删除中的已导入账目仍会被识别为重复；需要时请先恢复或永久删除。</p>
     <div class="file-field"><span>选择账单 Excel / CSV</span><div class="file-choice"><button type="button" id="chooseBillFile">选择文件</button><span id="billFileName">尚未选择文件</span></div><input id="billFile" type="file" accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" hidden></div>
     <div id="importSummary" class="import-summary" aria-live="polite">选择文件后会先预览，不会立即入账。</div>
+    <div id="importControls" class="import-controls" hidden><div class="filters" aria-label="导入预览筛选"><button class="filter active" type="button" data-import-filter="all">全部</button><button class="filter" type="button" data-import-filter="review">待核对</button><button class="filter" type="button" data-import-filter="duplicate">疑似重复</button></div><button class="quiet-button" type="button" id="selectVisibleImport">勾选当前显示</button><button class="quiet-button" type="button" id="clearVisibleImport">取消勾选当前显示</button></div>
     <div id="importPreview" class="import-preview"></div>
     <button class="primary" id="confirmImport" disabled>确认导入</button>
   </div></div>
+  <div class="modalback" id="categoryModal"><div class="modal">
+    <div class="modalhead"><h2>管理分类</h2><button class="close" data-close="categoryModal" aria-label="关闭">×</button></div>
+    <p class="import-help">自定义分类可用于记账、预算和筛选。已有账目的分类改名后会同步更新。</p>
+    <div id="customCategoryList" class="settings-list"></div>
+    <form id="categoryForm"><label class="field">分类名称<input id="customCategoryName" maxlength="12" required placeholder="例如：宠物"></label><label class="field">图标风格<select id="customCategoryIcon"></select></label><button class="primary">添加分类</button></form>
+  </div></div>
+  <div class="modalback" id="accountModal"><div class="modal">
+    <div class="modalhead"><h2>账户与转账</h2><button class="close" data-close="accountModal" aria-label="关闭">×</button></div>
+    <p class="import-help">账户是本机记账标签，不会连接微信、支付宝或银行。旧账目可在编辑时选择账户；转账只改变账户余额，不计入收支。</p>
+    <div id="accountList" class="settings-list"></div>
+    <form id="accountForm"><label class="field">账户名称<input id="accountName" maxlength="20" placeholder="例如：现金、银行卡、微信" required></label><label class="field">期初余额<input id="accountOpening" type="number" step="0.01" value="0" required></label><button class="primary">添加账户</button></form>
+    <div class="backup-divider">账户间转账</div>
+    <form id="transferForm"><label class="field">转出账户<select id="transferFrom" required></select></label><label class="field">转入账户<select id="transferTo" required></select></label><label class="field">金额<input id="transferAmount" type="number" min="0.01" step="0.01" required></label><label class="field">日期<input id="transferDate" type="date" required></label><label class="field">备注<input id="transferNote" maxlength="60" placeholder="例如：转入零钱"></label><button class="primary">记录转账</button></form>
+  </div></div>
+  <div class="modalback" id="importRulesModal"><div class="modal">
+    <div class="modalhead"><h2>导入分类规则</h2><button class="close" data-close="importRulesModal" aria-label="关闭">×</button></div>
+    <p class="import-help">账单导入时按顺序匹配商户或备注关键词；只影响新导入的支出，可在导入预览中修改分类。</p>
+    <div id="importRuleList" class="settings-list"></div>
+    <form id="importRuleForm"><label class="field">关键词<input id="ruleKeyword" maxlength="40" required placeholder="例如：地铁"></label><label class="field">账单来源<select id="ruleSource"><option value="">微信和支付宝</option><option value="微信">微信</option><option value="支付宝">支付宝</option></select></label><label class="field">归入类别<select id="ruleCategory"></select></label><button class="primary">添加规则</button></form>
+  </div></div>
+  <div class="modalback" id="recurringModal"><div class="modal">
+    <div class="modalhead"><h2>周期记账</h2><button class="close" data-close="recurringModal" aria-label="关闭">×</button></div>
+    <p class="import-help">到期后在首页提醒，由你确认后才会记入账本。</p>
+    <div id="recurringRules" class="settings-list"></div>
+    <form id="recurringForm">
+      <div class="seg"><button type="button" id="recurringExpense" class="active">支出</button><button type="button" id="recurringIncome">收入</button></div>
+      <label class="field">金额<input id="recurringAmount" type="number" min="0.01" step="0.01" required></label>
+      <label class="field" id="recurringCategoryField">类别<select id="recurringCategory"></select></label>
+      <label class="field">备注<input id="recurringNote" maxlength="60" required placeholder="例如：房租"></label>
+      <label class="field">周期<select id="recurringFrequency"><option value="monthly">每月</option><option value="weekly">每周</option></select></label>
+      <label class="field">首次日期<input id="recurringStart" type="date" required></label>
+      <button class="primary" id="saveRecurringRule">添加周期账目</button><button type="button" class="quiet-button" id="cancelRecurringEdit" hidden>取消编辑</button>
+    </form>
+  </div></div>
+  <div class="modalback" id="backupModal"><div class="modal">
+    <div class="modalhead"><h2>备份与恢复</h2><button class="close" data-close="backupModal" aria-label="关闭">×</button></div>
+    <p class="import-help">备份包含账目、预算、分类、周期规则和图片。文件用你设置的密码加密；密码遗失后无法恢复。恢复会替换当前账本，请先保存当前备份。</p>
+    <label class="field">备份提醒间隔<select id="backupInterval"><option value="7">每 7 天</option><option value="30">每 30 天</option><option value="90">每 90 天</option></select></label>
+    <label class="field">备份密码<input id="backupPassword" type="password" minlength="8" autocomplete="new-password" placeholder="至少 8 位"></label>
+    <button class="primary" id="exportBackup">保存加密备份</button>
+    <div class="backup-divider">从备份恢复</div>
+    <div class="file-choice"><button type="button" id="chooseBackupFile">选择备份文件</button><span id="backupFileName">尚未选择文件</span><input id="backupFile" type="file" hidden></div>
+    <button class="primary secondary" id="restoreBackup">验证并恢复</button>
+    <p id="backupStatus" class="import-help" aria-live="polite"></p>
+  </div></div>
+  <div class="modalback" id="trashModal"><div class="modal">
+    <div class="modalhead"><h2>最近删除</h2><button class="close" data-close="trashModal" aria-label="关闭">×</button></div>
+    <p class="import-help">删除的账目会保留在本机，直到你手动永久删除。恢复后会重新计入统计。</p>
+    <div id="trashList" class="settings-list"></div>
+  </div></div>
   <div class="toast" id="toast"></div>
   <script src="bill-import.js"></script>
+  <script src="ledger-features.js"></script>
+  <script src="backup-tools.js"></script>
+  <script src="ledger-store.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

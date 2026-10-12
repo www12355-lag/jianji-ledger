@@ -81,9 +81,9 @@
       const when = transactionTime(value(timeCol));
       const flow = value(flowCol);
       const status = value(statusCol);
-      const type = /支出|付款|转出/.test(flow) ? 'expense' : /收入|收款|转入/.test(flow) ? 'income' : null;
+      const flowType = /支出|付款|转出/.test(flow) ? 'expense' : /收入|收款|转入/.test(flow) ? 'income' : null;
       const amount = Number(value(amountCol).replace(/[¥￥元,\s]/g, '').replace(/^\+/, ''));
-      if (!when || !type || !Number.isFinite(amount) || amount <= 0 || /失败|关闭|取消|未付款|待支付|已撤销|处理中|退款中/.test(status)) {
+      if (!when || !flowType || !Number.isFinite(amount) || amount <= 0 || /失败|关闭|取消|未付款|待支付|已撤销|处理中|退款中/.test(status)) {
         skipped.ignored++;
         continue;
       }
@@ -91,11 +91,14 @@
       const product = value(productCol);
       const order = value(orderCol);
       const categoryText = value(categoryCol);
-      const note = [merchant, product, value(remarkCol)].filter(Boolean).filter((part, index, parts) => parts.indexOf(part) === index).join(' · ').slice(0, 60) || categoryText || source;
-      const importKey = order ? `${source}|${order}|${type}|${amount.toFixed(2)}` : `${source}|${when.time}|${type}|${amount.toFixed(2)}|${merchant}|${product}`;
+      const remark = value(remarkCol);
+      const note = [merchant, product, remark].filter(Boolean).filter((part, index, parts) => parts.indexOf(part) === index).join(' · ').slice(0, 60) || categoryText || source;
+      const reviewReason = /退款|退回|退货|退费/.test(`${categoryText} ${product} ${remark} ${status}`) ? '退款' : /转账|转入|转出|提现|充值|余额宝|理财|零钱通/.test(`${categoryText} ${product} ${remark}`) ? '转账或资金划转' : '';
+      const type = reviewReason ? 'excluded' : flowType;
+      const importKey = order ? `${source}|${order}|${flowType}|${amount.toFixed(2)}` : `${source}|${when.time}|${flowType}|${amount.toFixed(2)}|${merchant}|${product}`;
       if (seen.has(importKey)) { skipped.duplicate++; continue; }
       seen.add(importKey);
-      entries.push({ type, amount, date: when.date, transactionTime: when.time, category: type === 'expense' ? categoryFor(`${categoryText} ${merchant} ${product}`) : '', note, source, importKey });
+      entries.push({ type, amount, date: when.date, transactionTime: when.time, category: flowType === 'expense' ? categoryFor(`${categoryText} ${merchant} ${product}`) : '', note, source, importKey, reviewReason });
       if (entries.length > 1000) throw new Error('单次最多预览 1000 笔，请缩小导出时间范围');
     }
     return { source, entries, skipped };

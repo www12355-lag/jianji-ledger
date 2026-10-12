@@ -16,7 +16,8 @@ assert.equal(first.entries[0].amount, 12.5);
 assert.equal(first.entries[0].category, '餐饮');
 assert.equal(first.entries[0].date, '2026-10-08');
 assert.match(first.entries[0].note, /咖啡,中杯/);
-assert.equal(first.entries[1].type, 'income');
+assert.equal(first.entries[1].type, 'excluded');
+assert.equal(first.entries[1].reviewReason, '转账或资金划转');
 assert.equal(first.skipped.ignored, 2);
 const again = parseBill(wechat, '微信支付账单.csv', first.entries.map(entry => entry.importKey));
 assert.equal(again.entries.length, 0);
@@ -33,7 +34,8 @@ const second = parseBill(alipay, '支付宝账单.csv');
 assert.equal(second.source, '支付宝');
 assert.equal(second.entries.length, 2);
 assert.equal(second.entries[0].category, '交通');
-assert.equal(second.entries[1].type, 'income');
+assert.equal(second.entries[1].type, 'excluded');
+assert.equal(second.entries[1].reviewReason, '退款');
 assert.notEqual(second.entries[0].importKey, second.entries[1].importKey);
 const excelRows = [
   ['微信支付账单明细列表'],
