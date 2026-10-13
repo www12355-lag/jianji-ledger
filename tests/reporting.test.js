@@ -1,0 +1,22 @@
+const assert=require('node:assert/strict');
+const report=require('../reporting.js');
+const backup=require('../backup-tools.js');
+assert.deepEqual(report.range('month',2024,1),{start:'2024-02-01',end:'2024-02-29',label:'2024年2月'});
+assert.equal(report.range('month',2026,-1).start,'2025-12-01');
+assert.equal(report.range('year',2026).end,'2026-12-31');
+assert.throws(()=>report.range('custom',0,0,'2026-02-30','2026-03-01'),/有效日期/);
+assert.throws(()=>report.range('custom',0,0,'2026-10-13','2026-10-12'),/开始日期/);
+const bounds=report.range('custom',0,0,'2026-10-12','2026-10-13');
+assert.equal(report.within({date:'2026-10-12'},bounds),true);
+assert.equal(report.within({date:'2026-10-13'},bounds),true);
+assert.equal(report.within({date:'2026-10-14'},bounds),false);
+assert.equal(report.within({date:'2026-10-12',deletedAt:'today'},bounds),false);
+assert.deepEqual(report.buckets({start:'2025-12-15',end:'2026-02-01'}).map(b=>b.key),['2025-12','2026-01','2026-02']);
+assert.equal(report.buckets({start:'2024-01-01',end:'2026-12-31'}).length,3);
+assert.deepEqual(report.preferences({quick:false}),{quick:false,templates:true,savings:true,recent:true});
+(async()=>{
+ const ledger={entries:[],budgets:{},homeLayout:{quick:false,templates:true,savings:false,recent:true},favoriteTools:['backup','budget']};
+ assert.deepEqual((await backup.readBackup(await backup.createBackup(ledger,[],'test-password'),'test-password')).data,ledger);
+ await assert.rejects(backup.createBackup({...ledger,homeLayout:{quick:'false'}},[],'test-password'),/首页设置/);
+ console.log('Reporting range boundaries, deleted records, preferences and encrypted backup: passed');
+})().catch(e=>{console.error(e);process.exitCode=1;});

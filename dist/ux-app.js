@@ -1,5 +1,8 @@
 function featureTools() {
   return [
+    ['daily','possessions','▱','归物本','记录物品、陪伴时长与日均成本，选择图标或照片封面。','','possessions'],
+    ['plan','wishes','♡','想买清单','为想买的物品设置冷静期，记录最后的决定。','','wishes'],
+    ['daily','aa','↔','AA 分账','均分或自定义金额，跟踪垫付与结算；无需先加好友。','','aa'],
     ['plan','budget','¥','分类预算','设置每类支出的月度上限，查看剩余额度。','budgetCard'],
     ['plan','cash','▦','现金流日历','按计划预测未来 30 天每天的账户余额。','cashFlowCard'],
     ['plan','annual','◷','年度计划','为保险、年费或旅行提前预留费用。','annualCard'],
@@ -16,7 +19,9 @@ function featureTools() {
     ['manage','history','↶','修改历史','查看最近的账目变更并撤销操作。','', 'openHistory'],
     ['manage','backup','⇧','备份与恢复','加密保存账本，换设备时恢复。','', 'openBackup'],
     ['manage','trash','⌫','最近删除','恢复误删账目或永久删除。','', 'openTrash'],
-    ['manage','lock','▣','应用锁','使用系统验证保护打开账本的入口。','', 'appLockSetting']
+    ['manage','lock','▣','应用锁','使用系统验证保护打开账本的入口。','', 'appLockSetting'],
+    ['manage','home','▣','首页设置','选择显示分类速记、模板、储蓄目标和最近记录。','','homeLayout'],
+    ['daily','templates','▣','常用模板','管理常用账目，一键带出金额、类别与备注。','','manageTemplates']
   ].filter(tool => onAndroid() || !['payment','lock'].includes(tool[1]));
 }
 function setupFeatureMenu() {
@@ -33,6 +38,7 @@ function setupFeatureMenu() {
   $('clearFilters').onclick = () => {
     for (const id of ['recordSearch','recordCategory','recordSource','recordProject']) $(id).value = '';
     $('allMonths').checked = false; detailFilter = 'all';
+    detailRange = null;
     document.querySelectorAll('[data-filter]').forEach(button => { const selected = button.dataset.filter === 'all'; button.classList.toggle('active',selected); button.setAttribute('aria-pressed',String(selected)); });
     $('advancedFilters').hidden = true;
     render();
@@ -47,6 +53,7 @@ function setupFeatureMenu() {
     if (rule) fillSubscriptionForm(rule); else resetSubscriptionForm();
   };
   showFeatureGroup('plan');
+  setupPolish();
 }
 function showFeatureGroup(group) {
   for (const [name,panel] of [['plan','featurePlan'],['daily','featureDaily'],['manage','featureManage']]) $(panel).hidden = name !== group;
@@ -55,7 +62,7 @@ function showFeatureGroup(group) {
 }
 function openTool(id) {
   const tool = featureTools().find(item => item[1] === id); if (!tool) return;
-  if (tool[6]) { if (tool[6] === 'subscriptions') openSubscriptions(); else if (tool[6] === 'savings') openSavings(); else $(tool[6]).click(); return; }
+  if (tool[6]) { if(tool[6]==='possessions')openPossessions();else if(tool[6]==='wishes')openWishes();else if(tool[6]==='aa')openAA();else if (tool[6] === 'friends') openSocial(); else if (tool[6] === 'subscriptions') openSubscriptions(); else if (tool[6] === 'savings') openSavings(); else if (tool[6] === 'homeLayout') openHomeLayout(); else $(tool[6]).click(); return; }
   const host = $('featureDetailContent');
   for (const child of [...host.children]) if (child.classList.contains('card')) $('featureStorage').append(child);
   host.replaceChildren(); $('featureDetailTitle').textContent = tool[3]; $('featureDetailHelp').textContent = tool[4];

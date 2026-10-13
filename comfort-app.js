@@ -61,7 +61,7 @@ function setupComfort(){
 }
 let appLockDelayMs=0;
 function renderDetailFilterState(){
- const count=[detailFilter!=='all',$('recordCategory').value,$('recordSource').value,$('recordProject').value,$('allMonths').checked].filter(Boolean).length;
+ const count=[detailFilter!=='all',$('recordCategory').value,$('recordSource').value,$('recordProject').value,$('allMonths').checked,detailRange].filter(Boolean).length;
  $('toggleDetailFilters').textContent=count?`筛选 · ${count}`:'筛选';$('toggleDetailFilters').setAttribute('aria-expanded',String(!$('advancedFilters').hidden));
  $('clearFilters').hidden=!count&&!$('recordSearch').value.trim();
 }

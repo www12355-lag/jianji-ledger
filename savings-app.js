@@ -1,5 +1,10 @@
 function goalMarkup(goal){const p=JianjiSavings.progress(goal);return `<article class="goal-card"><div class="goal-head"><b>${escapeHtml(goal.name)}</b><span class="goal-badge">${p.complete?'已达成':p.overdue?'已过目标日期':`${Math.floor(p.percent)}%`}</span></div><div class="track"><div class="fill" style="width:${p.percent}%"></div></div><div class="goal-numbers"><b>${money(p.saved)}</b><span>目标 ${money(goal.target)}</span></div><p>${p.complete?'目标已达成，可以继续积攒。':`还差 ${money(p.remaining)}${goal.deadline?` · 目标日期 ${formatDate(goal.deadline)}`:''}${p.overdue?'，可调整目标日期。':p.monthly!==null?`<br>含本月，平均每月还需 ${money(p.monthly)}`:''}`}</p><div class="goal-actions"><button data-goal-deposit="${escapeHtml(goal.id)}">存入一笔</button><button data-goal-edit="${escapeHtml(goal.id)}">编辑</button><button data-goal-delete="${escapeHtml(goal.id)}">删除</button></div><section class="goal-history"><h3>存入记录（${goal.contributions.length}）</h3><ul>${goal.contributions.slice().reverse().map(item=>`<li><span>${formatDate(item.date)} · ${money(item.amount)}${item.note?` · ${escapeHtml(item.note)}`:''}</span><button data-goal-undo="${escapeHtml(goal.id)}" data-contribution="${escapeHtml(item.id)}">撤销</button></li>`).join('')||'<li>还没有存入记录</li>'}</ul></section></article>`;}
 const toolIconPaths = {
+ possessions:'M3 7l9-4 9 4v13H3Z M3 7l9 4 9-4 M12 11v9 M8 5l9 4',
+ wishes:'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z',
+ aa:'M8 3v18m8-18v18M3 8h18M3 16h18',
+ home:'M3 10l9-7 9 7v10H3z M9 20v-7h6v7',
+ templates:'M7 3h10v3H7z M7 5H4v16h16V5h-3 M8 11h8 M8 16h5',
  more:'M5 12h.01 M12 12h.01 M19 12h.01',
  budget:'M3 5h18v14H3z M7 9h4 M7 13h2 M15 9v6 M13 11h4',
  cash:'M4 5h16v16H4z M8 3v4 M16 3v4 M4 10h16 M8 14h2 M14 14h2 M8 17h2',
@@ -18,6 +23,7 @@ const toolIconPaths = {
  backup:'M12 16V3 M7 8l5-5 5 5 M4 15v6h16v-6',
  trash:'M3 6h18 M9 6V3h6v3 M5 6l1 15h12l1-15 M10 10v7 M14 10v7',
  lock:'M5 10h14v11H5z M8 10V7a4 4 0 0 1 8 0v3 M12 14v3',
+ friends:'M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M2 21v-3a6 6 0 0 1 12 0v3 M16 4a4 4 0 0 1 0 8 M17 15a5 5 0 0 1 5 5v1',
  camera:'M3 7h5l2-3h4l2 3h5v13H3z M12 10a4 4 0 1 0 0 8 4 4 0 0 0 0-8',
  image:'M3 3h18v18H3z M3 17l6-6 4 4 3-3 5 5 M16 7h.01'
 };
@@ -30,7 +36,6 @@ function setupSavings() {
  $('entryCategoryChoices').onclick=event=>{ const button=event.target.closest('[data-entry-category]'); if(button){$('entryCategory').value=button.dataset.entryCategory;renderEntryCategories();} };
  $('entryCategory').onchange=renderEntryCategories;
  $('cameraButton').innerHTML=uiIcon('camera')+'拍照'; $('imageButton').innerHTML=uiIcon('image')+'图片或截图';
- $('homeFeatures').firstElementChild.innerHTML=uiIcon('categories');
  $('savingsForm').onsubmit=saveSavingsGoal;
  $('cancelSavingsEdit').onclick=()=>{resetSavingsForm();close('savingsEditorModal');openSavings();};
  $('savingsDetailContent').onclick=handleSavings;

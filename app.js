@@ -36,6 +36,11 @@ function normalizeData() {
   if (!Array.isArray(data.projects)) data.projects = [];
   if (!Array.isArray(data.receivables)) data.receivables = [];
   if (!Array.isArray(data.entryHistory)) data.entryHistory = [];
+  if(!Array.isArray(data.wishList))data.wishList=[];if(!Array.isArray(data.aaBills))data.aaBills=[];
+  if(!Array.isArray(data.possessions))data.possessions=[];
+  if(typeof data.possessionsPrivacy!=='boolean')data.possessionsPrivacy=false;
+  data.homeLayout = JianjiReporting.preferences(data.homeLayout);
+  data.favoriteTools = Array.isArray(data.favoriteTools) ? [...new Set(data.favoriteTools.filter(id => typeof id === 'string'))].slice(0, 50) : [];
   if (typeof data.lastEntryAccount !== 'string') data.lastEntryAccount = '';
   if (typeof data.missingCheckEnabled !== 'boolean') data.missingCheckEnabled = true;
   if (typeof data.missingCheckDismissedUntil !== 'string') data.missingCheckDismissedUntil = '';
@@ -55,7 +60,7 @@ const save = () => {
   const snapshot = structuredClone(data);
   const operation = pendingWrites.then(() => JianjiStore.write(snapshot));
   pendingWrites = operation.catch(() => {});
-  operation.then(() => scheduleAutoBackup()).catch(() => {});
+  operation.then(() => { scheduleAutoBackup(); scheduleSocialAuto(); scheduleExtras(); }).catch(() => {});
   return operation;
 };
 const escapeHtml = value => String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
@@ -75,10 +80,12 @@ function photoStore(mode, id, blob) {
       const transaction = db.transaction('photos', mode === 'get' ? 'readonly' : 'readwrite');
       const store = transaction.objectStore('photos');
       const operation = mode === 'put' ? store.put(blob, id) : mode === 'delete' ? store.delete(id) : store.get(id);
-      operation.onsuccess = () => resolve(operation.result);
+      let result;
+      operation.onsuccess = () => { result=operation.result; };
       operation.onerror = () => reject(operation.error);
-      transaction.oncomplete = () => db.close();
-      transaction.onerror = () => db.close();
+      transaction.oncomplete = () => { db.close(); resolve(result); };
+      transaction.onerror = () => { db.close(); reject(transaction.error || operation.error); };
+      transaction.onabort = () => { db.close(); reject(transaction.error || new Error('图片存储已取消')); };
     };
   });
 }
@@ -97,45 +104,16 @@ async function loadVisiblePhotos() {
 }
 function renderRecordList(id, list, emptyText) {
   const container = $(id);
-  container.innerHTML = list.map((e, index) => `${id === 'records' && (index === 0 || list[index - 1].date !== e.date) ? dayHeading(e.date, list) : ''}<div class="record"><div class="icon ${toneClass(e.type === 'expense' ? e.category : e.type === 'refund' ? 'income' : e.type)}">${iconMarkup(e.type === 'expense' ? e.category : e.type === 'refund' ? 'income' : e.type)}</div><div class="recordtext"><b></b><small></small></div>${e.photoId ? `<img class="record-photo" data-photo-id="${escapeHtml(e.photoId)}" alt="记录图片" hidden>` : ''}<div class="amount ${e.type === 'income' || e.type === 'refund' ? 'income' : e.type === 'excluded' ? 'excluded' : ''}">${e.type === 'income' || e.type === 'refund' ? '+' : e.type === 'excluded' ? '' : '−'}${money(e.amount)}</div><details class="record-menu"><summary aria-label="账目操作">${uiIcon('more')}</summary><div class="actions">${e.type === 'expense' ? `<button data-refund="${escapeHtml(e.id)}" aria-label="为这笔支出记退款">退款</button>` : ''}<button data-edit="${escapeHtml(e.id)}" aria-label="编辑记录">编辑</button><button data-delete="${escapeHtml(e.id)}" aria-label="删除记录">删除</button></div></details></div>`).join('') || `<div class="empty">${emptyText}</div>`;
-  [...container.querySelectorAll('.record')].forEach((row, index) => {
-    const entry = list[index];
-    row.querySelector('b').textContent = entry.note || (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '月度收入' : entry.type === 'refund' ? '退款' : Array.isArray(entry.splits) && entry.splits.length ? '多类别支出' : entry.category);
-    const accountName = id => data.accounts.find(account => account.id === id)?.name || '未知账户';
-    const accountText = entry.transferFrom ? ` · ${accountName(entry.transferFrom)} → ${accountName(entry.transferTo)}` : entry.accountId ? ` · ${accountName(entry.accountId)}` : '';
-    const loanText = entry.receivableId ? ` · ${entry.receivableKind === 'loan' ? '借出' : '收回借款'}` : '';
-    const projectText = (entry.projectIds || []).map(id => data.projects.find(project => project.id === id)?.name).filter(Boolean).join('、');
-    row.querySelector('small').textContent = formatDate(entry.date) + ' · ' + (entry.transferFrom ? '账户转账' : entry.type === 'income' ? '收入' : entry.type === 'excluded' ? '不计收支' : entry.type === 'refund' ? `${entry.category}退款` : Array.isArray(entry.splits) && entry.splits.length ? entry.splits.map(part => `${part.category}${money(part.amount)}`).join('、') : entry.category) + (entry.merchant ? ` · ${entry.merchant}` : '') + (entry.source ? ` · ${entry.source}` : '') + loanText + accountText + (projectText ? ` · #${projectText}` : '');
+  container.innerHTML = list.map((entry,index) => `${id==='records'&&(index===0||list[index-1].date!==entry.date)?dayHeading(entry.date,list):''}<button type="button" class="record record-open" data-record-detail="${escapeHtml(entry.id)}"><span class="icon ${toneClass(entry.type==='expense'?entry.category:entry.type==='refund'?'income':entry.type)}">${iconMarkup(entry.type==='expense'?entry.category:entry.type==='refund'?'income':entry.type)}</span><span class="recordtext"><b></b><small></small></span><span class="amount ${entry.type==='income'||entry.type==='refund'?'income':entry.type==='excluded'?'excluded':''}">${entry.type==='income'||entry.type==='refund'?'+':entry.type==='excluded'?'':'−'}${money(entry.amount)}</span><span class="record-chevron" aria-hidden="true">›</span></button>`).join('') || `<div class="empty">${emptyText}</div>`;
+  [...container.querySelectorAll('.record')].forEach((row,index)=>{
+    const entry=list[index];
+    row.querySelector('b').textContent=entry.note||(entry.transferFrom?'账户转账':entry.type==='income'?'收入':entry.type==='refund'?'退款':entry.splits?.length?'多类别支出':entry.category);
+    const account=data.accounts.find(item=>item.id===entry.accountId)?.name;
+    row.querySelector('small').textContent=`${formatDate(entry.date)} · ${entry.splits?.length?'多类别':entry.type==='expense'?entry.category:entry.type==='refund'?entry.category+'退款':entry.type==='income'?'收入':'不计收支'}${account?' · '+account:''}${entry.photoId?' · 有图片':''}`;
+    row.setAttribute('aria-label',`${row.querySelector('b').textContent}，${money(entry.amount)}，查看详情`);
   });
 }
-function renderStats(list, income, expense) {
-  $('statsIncome').textContent = money(income);
-  $('statsExpense').textContent = money(expense);
-  $('statsBalance').textContent = money(income - expense);
-  const categoryTotals = cats.map(category => ({
-    category,
-    total: list.reduce((sum, entry) => sum + JianjiFeatures.categoryNet(entry, category), 0)
-  })).filter(item => item.total > 0).sort((a, b) => b.total - a.total);
-  $('categoryStats').innerHTML = categoryTotals.map(item => `<div class="category-row"><div class="rowtop"><b class="category-name"><span class="category-mini ${toneClass(item.category)}">${iconMarkup(item.category)}</span>${escapeHtml(item.category)}</b><span>${money(item.total)}</span></div><small>占本月净支出 ${expense > 0 ? Math.round(item.total / expense * 100) : 0}%</small><div class="track"><div class="fill" style="width:${expense > 0 ? Math.min(100, item.total / expense * 100) : 0}%"></div></div></div>`).join('') || '<div class="empty">本月还没有净支出记录</div>';
-  const months = Array.from({ length: 6 }, (_, index) => {
-    const date = new Date(view.getFullYear(), view.getMonth() - 5 + index, 1);
-    const ym = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    const entries = liveEntries().filter(e => e.date && e.date.startsWith(ym));
-    return {
-      label: `${date.getMonth() + 1}月`,
-      income: entries.filter(e => e.type === 'income').reduce((sum, e) => sum + Number(e.amount), 0),
-      expense: JianjiFeatures.netExpense(entries)
-    };
-  });
-  const maximum = Math.max(0, ...months.flatMap(month => [month.income, month.expense]));
-  $('trendStats').innerHTML = maximum > 0 ? `<div class="trend-chart">${months.map(month => `<div class="trend-col" aria-label="${month.label}收入${money(month.income)}，净支出${money(month.expense)}"><div class="trend-bars"><div class="trend-bar income" style="height:${Math.max(0, month.income) / maximum * 100}%"></div><div class="trend-bar expense" style="height:${Math.max(0, month.expense) / maximum * 100}%"></div></div><label>${month.label}</label></div>`).join('')}</div>` : '<div class="empty">近 6 个月还没有收支记录</div>';
-  const previousKey = `${new Date(view.getFullYear(), view.getMonth() - 1, 1).getFullYear()}-${String(new Date(view.getFullYear(), view.getMonth() - 1, 1).getMonth() + 1).padStart(2, '0')}`;
-  const previousExpense = JianjiFeatures.netExpense(liveEntries().filter(entry => entry.date?.startsWith(previousKey)));
-  const difference = expense - previousExpense;
-  const top = categoryTotals[0];
-  const over = cats.filter(category => Number((data.budgets[key()] || {})[category]) > 0 && list.reduce((sum, entry) => sum + JianjiFeatures.categoryNet(entry, category), 0) > Number(data.budgets[key()][category]));
-  $('monthlyReview').innerHTML = `<div class="review-grid"><div><small>本月净支出</small><b>${money(expense)}</b></div><div><small>比上月</small><b>${previousExpense === 0 ? '上月暂无数据' : `${difference >= 0 ? '多' : '少'} ${money(Math.abs(difference))}`}</b></div><div><small>最多的类别</small><b>${top ? `${escapeHtml(top.category)} ${money(top.total)}` : '暂无'}</b></div><div><small>超预算类别</small><b>${over.length ? over.map(escapeHtml).join('、') : '无'}</b></div></div>`;
-}
+function renderStats() { renderAnalytics(); }
 function renderPlanning(list, budgets) {
   const due = JianjiFeatures.recurringOccurrences(data.recurring, data.recurringAcknowledged);
   $('recurringDue').innerHTML = due.length ? due.slice(0, 5).map(({ rule, date }) => `<div class="planning-row"><div><b>${escapeHtml(rule.note)}</b><small>${formatDate(date)} · ${rule.type === 'income' ? '收入' : escapeHtml(rule.category)} · ${money(rule.amount)}</small></div><div class="planning-actions"><button data-recurring-post="${escapeHtml(rule.id)}|${date}">记入</button><button data-recurring-skip="${escapeHtml(rule.id)}|${date}">跳过</button></div></div>`).join('') + (due.length > 5 ? `<p class="muted">还有 ${due.length - 5} 笔待确认</p>` : '') : '<div class="empty">暂无待确认账目；可添加房租、订阅等周期账目</div>';
@@ -168,14 +146,14 @@ function render() {
   const source = $('recordSource').value;
   const category = $('recordCategory').value;
   const projectId = $('recordProject').value;
-  const detailList = $('allMonths').checked ? liveEntries().sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id) : list;
-  const filtered = detailList.filter(e => (detailFilter === 'all' || e.type === detailFilter || detailFilter === 'expense' && e.type === 'refund')
+  const detailList = (detailRange || $('allMonths').checked) ? liveEntries().sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id) : list;
+  const filtered = detailList.filter(e => (!detailRange || JianjiReporting.within(e, detailRange)) && (detailFilter === 'all' || e.type === detailFilter || detailFilter === 'expense' && e.type === 'refund')
     && (!search || `${e.note || ''} ${e.merchant || ''} ${e.source || ''} ${e.category || ''}`.toLocaleLowerCase().includes(search))
     && (!source || (source === 'manual' ? !e.source : e.source === source))
     && (!category || e.category === category || e.type === 'expense' && JianjiFeatures.expenseParts(e).some(part => part.category === category))
     && (!projectId || (e.projectIds || []).includes(projectId)));
   $('count').textContent = `共 ${filtered.length} 笔`;
-  $('filteredTotals').textContent = `筛选合计：收入 ${money(filtered.filter(e => e.type === 'income').reduce((sum,e) => sum + Number(e.amount),0))} · 净支出 ${money(JianjiFeatures.netExpense(filtered))}`;
+  $('filteredTotals').textContent = `筛选合计：收入 ${money(filtered.filter(e => e.type === 'income').reduce((sum,e) => sum + Number(e.amount),0))} · ${category ? '所选类别净支出' : '净支出'} ${money(category ? filtered.reduce((sum,e) => sum + JianjiFeatures.categoryNet(e,category),0) : JianjiFeatures.netExpense(filtered))}`;
   const budgets = data.budgets[ym] || {};
   $('budgets').innerHTML = cats.filter(c => Number(budgets[c]) > 0).map(c => {
     const used = list.reduce((sum, entry) => sum + JianjiFeatures.categoryNet(entry, c), 0);
@@ -207,12 +185,13 @@ function render() {
   renderRecordList('recentRecords', list.slice(0, 3), '这个月还没有记录，点「记一笔」开始');
   renderRecordList('records', filtered, filtered.length ? '' : detailFilter === 'all' ? '这个月还没有记录，点「记一笔」开始' : '这个月没有这类记录');
   renderStats(list, income, expense);
+  renderHomeLayout(); renderToolDiscovery(); renderDetailRange(); renderMyBackup();
   loadVisiblePhotos();
 }
 function switchPage(page, updateHash = true) {
-  activePage = ['home', 'details', 'stats', 'features'].includes(page) ? page : 'home';
-  for (const name of ['home', 'details', 'stats', 'features']) $(name + 'Page').hidden = name !== activePage;
-  $('add').hidden = activePage === 'home' || activePage === 'features';
+  activePage = ['home', 'details', 'stats', 'features', 'me'].includes(page) ? page : 'home';
+  for (const name of ['home', 'details', 'stats', 'features', 'me']) $(name + 'Page').hidden = name !== activePage;
+  $('add').hidden = activePage === 'home' || activePage === 'features' || activePage === 'me';
   document.querySelectorAll('[data-page]').forEach(button => {
     const selected = button.dataset.page === activePage;
     button.classList.toggle('active', selected);
@@ -220,10 +199,13 @@ function switchPage(page, updateHash = true) {
     else button.removeAttribute('aria-current');
   });
   if (updateHash) location.hash = activePage;
+  refreshPeriodHeader();
+  document.querySelector('.monthbar').hidden=activePage==='me';
+  if(activePage==='me')loadMySocial();
   window.scrollTo(0, 0);
 }
-function open(id) { refreshDateLabels(); if (id === 'entryModal') { renderEntryCategories(); beginEntryDraftTracking(); } if (id !== 'featureDetailModal') close('featureDetailModal'); $(id).classList.add('show'); }
-function close(id) { if (id === 'entryModal') persistEntryDraft(); $(id).classList.remove('show'); }
+function open(id) { noteModalOpening(id); refreshDateLabels(); if (id === 'entryModal') { renderEntryCategories(); beginEntryDraftTracking(); } if (id !== 'featureDetailModal') close('featureDetailModal'); if (id !== 'recordDetailModal') close('recordDetailModal'); $(id).classList.add('show'); document.body.classList.add('has-modal'); }
+function close(id) { if (id === 'entryModal') persistEntryDraft(); $(id).classList.remove('show'); if(!topModal()) document.body.classList.remove('has-modal'); }
 function setType(type) {
   entryType = type;
   $('expenseTab').classList.toggle('active', type === 'expense');
@@ -300,7 +282,9 @@ function dayHeading(date, list) {
   const today = new Date(), yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
   const label = date === today.toLocaleDateString('en-CA') ? '今天' : date === yesterday.toLocaleDateString('en-CA') ? '昨天' : formatDate(date);
   const entries = list.filter(entry => entry.date === date);
-  return `<div class="day-heading"><b>${escapeHtml(label)}</b><small>收入 ${money(entries.filter(entry => entry.type === 'income').reduce((sum,entry) => sum + Number(entry.amount),0))} · 净支出 ${money(JianjiFeatures.netExpense(entries))}</small></div>`;
+  const category = $('recordCategory').value;
+  const expense = category ? entries.reduce((sum,entry) => sum + JianjiFeatures.categoryNet(entry,category),0) : JianjiFeatures.netExpense(entries);
+  return `<div class="day-heading"><b>${escapeHtml(label)}</b><small>收入 ${money(entries.filter(entry => entry.type === 'income').reduce((sum,entry) => sum + Number(entry.amount),0))} · ${category ? '类别净支出' : '净支出'} ${money(expense)}</small></div>`;
 }
 function refreshCategoryUI() {
   refreshCats();
@@ -383,11 +367,10 @@ refreshCategoryUI();
 refreshAccountUI();
 refreshProjectUI();
 setupFeatureMenu();
-$('homeFeatures').onclick = () => switchPage('features');
 for (const id of ['recordSearch', 'recordCategory', 'recordSource', 'recordProject', 'allMonths']) $(id).addEventListener('input', render);
 $('cashFlowAccount').onchange = renderCashFlow;
-$('prev').onclick = () => { view.setMonth(view.getMonth() - 1); render(); };
-$('next').onclick = () => { view.setMonth(view.getMonth() + 1); render(); };
+$('prev').onclick = () => { view.setMonth(view.getMonth() - (activePage==='stats'&&statsMode==='year'?12:1)); if(activePage==='details')detailRange=null; render(); };
+$('next').onclick = () => { view.setMonth(view.getMonth() + (activePage==='stats'&&statsMode==='year'?12:1)); if(activePage==='details')detailRange=null; render(); };
 document.querySelectorAll('[data-page]').forEach(button => button.onclick = () => switchPage(button.dataset.page));
 $('allRecords').onclick = () => switchPage('details');
 document.querySelectorAll('[data-filter]').forEach(button => button.onclick = () => {
@@ -874,7 +857,7 @@ let editingRecurringId = null;
 let reminderEnabled = false;
 async function syncReminders(askPermission = false) {
   if (!onAndroid()) return;
-  const rules = data.recurring.map(rule => ({ id: String(rule.id), frequency: rule.frequency, startDate: rule.startDate, active: rule.active !== false }));
+  const rules = [...data.recurring.map(rule => ({ id: String(rule.id), frequency: rule.frequency, startDate: rule.startDate, active: rule.active !== false })),...JianjiPossessions.reminders(data.possessions||[])];
   await window.Capacitor.nativePromise('Reminder', 'configure', { rules, enabled: reminderEnabled, askPermission });
 }
 async function refreshReminderStatus() {
@@ -1187,7 +1170,7 @@ async function saveBackupFile(name, contents) {
 async function createVerifiedBackup(password) {
   const snapshot = structuredClone(data);
   const photos = [];
-  const ids = [...new Set(snapshot.entries.map(entry => entry.photoId).filter(Boolean))];
+  const ids = [...new Set(JianjiPossessions.photoRecords(snapshot).map(entry => entry.photoId).filter(Boolean))];
   for (const id of ids) {
     const blob = await photoStore('get', id);
     if (!blob) throw new Error('有记录图片无法读取，请检查本机图片存储');
@@ -1197,7 +1180,7 @@ async function createVerifiedBackup(password) {
   if (content.length > 50 * 1024 * 1024) throw new Error('备份超过 50 MB，请先减少账目图片再备份');
   const checked = await JianjiBackup.readBackup(content, password);
   if (checked.data.entries.length !== snapshot.entries.length || checked.photos.length !== photos.length) throw new Error('备份校验失败，请重试');
-  return { content, entryCount: snapshot.entries.length, photoCount: photos.length };
+  return { content, entryCount: snapshot.entries.length, itemCount: snapshot.possessions?.length||0, photoCount: photos.length };
 }
 let autoBackupRunning = false;
 function scheduleAutoBackup(delay = 15000) {
@@ -1209,7 +1192,7 @@ async function refreshAutoBackupStatus() {
   if (!onAndroid()) return;
   const status = await window.Capacitor.nativePromise('AutoBackup', 'status', {});
   autoBackupConfigured = Boolean(status.configured);
-  lastAutoBackupAt = status.lastSavedAt || '';
+  lastAutoBackupAt = status.lastSavedAt || '';myBackupError='';
   $('autoBackupStatus').textContent = autoBackupConfigured
     ? `已开启。${status.lastSavedAt ? `最近写入：${status.lastSavedAt.replace('T', ' ').slice(0, 16)}。` : '尚未写入备份。'}请记住密码，并定期检查目录中的文件。`
     : status.hasFolder ? '目录已选择。填写上方密码后开启自动备份。' : '尚未设置自动备份目录。';
@@ -1226,6 +1209,7 @@ async function runAutoBackup() {
     await window.Capacitor.nativePromise('AutoBackup', 'write', { contents: content });
     await refreshAutoBackupStatus();
   } catch (error) {
+    myBackupError=error.message||'请检查目录权限';renderMyBackup();
     $('autoBackupStatus').textContent = `自动备份失败：${error.message || '请检查目录权限'}`;
   } finally { autoBackupRunning = false; }
 }
@@ -1271,12 +1255,12 @@ $('exportBackup').onclick = async () => {
   $('exportBackup').disabled = true;
   $('backupStatus').textContent = '正在收集账目与图片并加密…';
   try {
-    const { content, entryCount, photoCount } = await createVerifiedBackup(password);
+    const { content, entryCount, itemCount, photoCount } = await createVerifiedBackup(password);
     await saveBackupFile(`简记备份-${new Date().toLocaleDateString('en-CA')}.jianji`, content);
     data.lastBackupAt = new Date().toISOString();
     try { await save(); } catch { /* The backup file was saved even if the reminder timestamp could not be persisted. */ }
     render();
-    $('backupStatus').textContent = `备份已保存：${entryCount} 笔账目（含最近删除）、${photoCount} 张图片。请妥善保管文件和密码。`;
+    $('backupStatus').textContent = `备份已保存：${entryCount} 笔账目（含最近删除）、${itemCount} 件物品、${photoCount} 张图片。请妥善保管文件和密码。`;
   } catch (error) { $('backupStatus').textContent = error.message || '备份失败'; }
   finally { $('exportBackup').disabled = false; }
 };
@@ -1290,43 +1274,10 @@ $('restoreBackup').onclick = async () => {
       if (!file.name.toLowerCase().endsWith('.jianji')) throw new Error('请选择 .jianji 备份文件');
       if (file.size > 50 * 1024 * 1024) throw new Error('备份文件超过 50 MB，无法在当前版本恢复');
       pendingRestore = await JianjiBackup.readBackup(await file.text(), password);
-      $('backupStatus').textContent = `已验证：${pendingRestore.data.entries.length} 笔账目、${pendingRestore.photos.length} 张图片。再次点击将替换当前账本。`;
+      $('backupStatus').textContent = `已验证：${pendingRestore.data.entries.length} 笔账目、${pendingRestore.data.possessions?.length||0} 件物品、${pendingRestore.photos.length} 张图片。再次点击将替换当前账本。`;
       $('restoreBackup').textContent = '确认替换当前账本';
     } else {
-      const restored = pendingRestore;
-      const photoIds = new Map();
-      const written = [];
-      let committed = false;
-      try {
-        for (const [index, photo] of restored.photos.entries()) {
-          const id = `restore-${Date.now()}-${index}`;
-          const blob = new Blob([JianjiBackup.fromBase64(photo.base64)], { type: photo.mime });
-          await photoStore('put', id, blob);
-          photoIds.set(photo.id, id);
-          written.push(id);
-        }
-        const replacement = structuredClone(restored.data);
-        replacement.lastBackupAt = new Date().toISOString();
-        for (const entry of replacement.entries) {
-          if (entry.photoId) {
-            if (!photoIds.has(entry.photoId)) throw new Error('备份中缺少账目关联的图片');
-            entry.photoId = photoIds.get(entry.photoId);
-          }
-        }
-        await pendingWrites;
-        await JianjiStore.write(replacement);
-        committed = true;
-        data = replacement;
-        normalizeData();
-        refreshCategoryUI(); refreshAccountUI(); refreshProjectUI(); render(); close('backupModal'); toast('账本已恢复');
-        syncReminders().catch(() => toast('账本已恢复，但系统提醒未更新'));
-        scheduleAutoBackup();
-        pendingRestore = null;
-      } catch (error) {
-        if (!committed) for (const id of written) photoStore('delete', id).catch(() => {});
-        else throw new Error('账本已恢复，但页面刷新失败，请重新打开应用');
-        throw error;
-      }
+      await applyExtraRestore(pendingRestore);pendingRestore=null;close('backupModal');toast('账本已恢复');
     }
   } catch (error) { $('backupStatus').textContent = error.message || '恢复失败；当前账本未更改'; pendingRestore = null; $('restoreBackup').textContent = '验证并恢复'; }
   finally { $('restoreBackup').disabled = false; }
@@ -1419,13 +1370,13 @@ $('trashList').onclick = async event => {
     const oldHistory = data.entryHistory;
     data.entryHistory = oldHistory.filter(item => String(item.recordId) !== String(entry.id));
     try { await save(); } catch { data.entries = old; data.entryHistory = oldHistory; return toast('删除失败，请检查存储空间'); }
-    if (entry.photoId && !data.entries.some(item => item.photoId === entry.photoId)) photoStore('delete', entry.photoId).catch(() => {});
+    if (entry.photoId && !JianjiPossessions.photoRecords(data).some(item => item.photoId === entry.photoId)) photoStore('delete', entry.photoId).catch(() => {});
     toast('已永久删除');
   }
   renderTrash(); render();
 };
-document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => close(button.dataset.close));
-document.querySelectorAll('.modalback').forEach(modal => modal.onclick = e => { if (e.target === modal) close(modal.id); });
+document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => dismissModal(button.dataset.close));
+document.querySelectorAll('.modalback').forEach(modal => modal.onclick = e => { if (e.target === modal) dismissModal(modal.id); });
 $('entryForm').onsubmit = async e => {
   e.preventDefault();
   const submitButton = $('entryForm').querySelector('button.primary');
@@ -1494,11 +1445,12 @@ $('entryForm').onsubmit = async e => {
     toast('记录保存失败，请检查浏览器存储空间');
     return;
   }
-  if (original?.photoId && original.photoId !== entry.photoId) photoStore('delete', original.photoId).catch(() => {});
+  if (original?.photoId && original.photoId !== entry.photoId && !JianjiPossessions.photoRecords(data).some(item => item.photoId === original.photoId)) photoStore('delete', original.photoId).catch(() => {});
   if (paymentNotice) {
     try { await paymentPlugin('dismiss', { id: paymentNotice.id }); } catch { /* Saved entries still hide their matching notice. */ }
     paymentDraftId = null;
     refreshPaymentNotices();
+    loadMySocial();
   }
   await discardEntryDraft().catch(() => { entryDraft = null; renderDraftBanner(); });
   draftBaseline = JSON.stringify(entryDraftSnapshot());
@@ -1560,6 +1512,8 @@ $('refundForm').onsubmit = async event => {
   close('refundModal'); render(); toast(previous ? '退款已更新' : '退款已记录');
 };
 async function handleRecordClick(e) {
+  const detailButton=e.target.closest('[data-record-detail]');
+  if(detailButton){await openRecordDetail(detailButton.dataset.recordDetail);return;}
   if (e.target.matches('.record-photo')) { window.open(e.target.src, '_blank'); return; }
   const refundButton = e.target.closest('[data-refund]');
   if (refundButton) {
@@ -1725,6 +1679,7 @@ async function loadLedger() {
     data = await JianjiStore.initialize();
     normalizeData();
     ledgerLoaded = true;
+    await purgeExpiredPossessions();
     await loadEntryDraft();
     refreshCategoryUI();
     refreshAccountUI();

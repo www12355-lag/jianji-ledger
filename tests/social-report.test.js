@@ -1,0 +1,12 @@
+const assert=require('node:assert/strict');
+const {create}=require('../social-report.js');
+const entries=[{type:'expense',date:'2026-10-12',amount:100,category:'餐饮',merchant:'SECRET',note:'PRIVATE',splits:[{category:'餐饮',amount:40},{category:'购物',amount:60}]},{type:'refund',date:'2026-10-13',amount:10,category:'餐饮'},{type:'income',date:'2026-10-13',amount:200},{type:'expense',date:'2026-10-14',amount:10000,category:'餐饮'},{type:'expense',date:'2026-10-13',amount:10000,category:'餐饮',deletedAt:'x'}];
+const hidden=create(entries,{'2026-10':{餐饮:100}},'month','2026-10-13',{shareBudget:true},'2026-10-13');
+assert.equal(hidden.income,null);assert.equal(hidden.net,null);assert.equal(hidden.balance,null);
+assert.equal(hidden.budget.percent,30);assert.equal(hidden.count,3);
+assert.equal(hidden.categories[0].name,'分类 1');
+assert.ok(!/SECRET|PRIVATE|餐饮|购物|10000/.test(JSON.stringify(hidden)));
+const visible=create(entries,{},'week','2026-10-13',{hideAmounts:false,hideCategories:false,shareBudget:true},'2026-10-13');
+assert.equal(visible.net,90);assert.equal(visible.income,200);assert.equal(visible.balance,110);assert.equal(visible.budget,null);
+assert.equal(visible.categories[0].name,'购物');
+assert.throws(()=>create(entries,{},'day','2026-10-14',{},'2026-10-13'));

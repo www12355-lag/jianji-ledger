@@ -4,3 +4,6 @@ android/build/
 android/app/build/
 android/local.properties
 *.apk
+.deploy/
+server/__pycache__/
+server/*.db*

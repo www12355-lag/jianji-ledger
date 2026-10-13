@@ -13,6 +13,10 @@
     return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 200000, hash: 'SHA-256' }, passwordKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
   }
   function validateData(value) {
+    if(value?.possessions!==undefined){const possessions=typeof module!=='undefined'?require('./possessions-plus-model.js'):root.JianjiPossessions;if(!Array.isArray(value.possessions)||value.possessions.length>1000)throw new Error('归物本最多保留 1000 件物品');const ids=new Set();for(const p of value.possessions){possessions.validate(p);if(ids.has(p.id))throw new Error('物品标识重复');ids.add(p.id);}}
+    if(value?.possessionsPrivacy!==undefined&&typeof value.possessionsPrivacy!=='boolean')throw new Error('归物本金額显示设置无效');
+    const life=typeof module!=='undefined'?require('./life-tools.js'):root.JianjiLife;
+    for(const [key,limit,validate] of [['wishList',200,life.validateWish],['aaBills',500,life.validateBill]]){if(value?.[key]!==undefined){if(!Array.isArray(value[key])||value[key].length>limit)throw new Error('备份中的清单或分摊数量无效');const ids=new Set();for(const item of value[key]){validate(item);if(ids.has(item.id))throw new Error('备份中存在重复清单或分摊');ids.add(item.id);}}}
     if (!value || !Array.isArray(value.entries) || !value.budgets || typeof value.budgets !== 'object' || Array.isArray(value.budgets)) throw new Error('备份内容缺少账目或预算');
     if (value.entries.length > 100000 || value.entries.some(entry => !entry || !['expense', 'income', 'excluded', 'refund'].includes(entry.type) || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date) || !Number.isFinite(Number(entry.amount)) || Number(entry.amount) <= 0 || entry.type === 'refund' && (entry.refundOf === undefined || typeof entry.category !== 'string') || entry.accountDelta !== undefined && !Number.isFinite(Number(entry.accountDelta)) || entry.projectIds && (!Array.isArray(entry.projectIds) || entry.projectIds.length > 100 || entry.projectIds.some(id => typeof id !== 'string')) || entry.splits && (!Array.isArray(entry.splits) || entry.type !== 'expense' || entry.splits.length < 2 || entry.splits.some(part => !part || typeof part.category !== 'string' || !Number.isFinite(Number(part.amount)) || Number(part.amount) <= 0) || Math.round(entry.splits.reduce((sum, part) => sum + Number(part.amount), 0) * 100) !== Math.round(Number(entry.amount) * 100)))) throw new Error('备份中的账目格式不正确');
     const originals = new Map(value.entries.filter(entry => entry.type === 'expense').map(entry => [String(entry.id), entry]));
@@ -28,6 +32,8 @@
       returned.set(key, total);
     }
     if (value.customCategories && (!Array.isArray(value.customCategories) || value.customCategories.length > 100)) throw new Error('备份中的分类格式不正确');
+    if (value.homeLayout && (typeof value.homeLayout !== 'object' || Array.isArray(value.homeLayout) || ['quick','templates','savings','recent'].some(key => value.homeLayout[key] !== undefined && typeof value.homeLayout[key] !== 'boolean'))) throw new Error('备份中的首页设置格式不正确');
+    if (value.favoriteTools && (!Array.isArray(value.favoriteTools) || value.favoriteTools.length > 50 || value.favoriteTools.some(id => typeof id !== 'string'))) throw new Error('备份中的功能收藏格式不正确');
     if (value.recurring && (!Array.isArray(value.recurring) || value.recurring.length > 1000)) throw new Error('备份中的周期账目格式不正确');
     if (value.recurring?.some(rule => rule.subscription !== undefined && (typeof rule.subscription !== 'boolean' || rule.subscription && (rule.type !== 'expense' || !['weekly','monthly','yearly'].includes(rule.frequency) || !Number.isFinite(Number(rule.amount)) || Number(rule.amount) <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(rule.startDate))))) throw new Error('备份中的订阅格式不正确');
     if (value.accounts && (!Array.isArray(value.accounts) || value.accounts.length > 1000 || value.accounts.some(account => !account || typeof account.id !== 'string' || typeof account.name !== 'string' || !Number.isFinite(Number(account.openingBalance))))) throw new Error('备份中的账户格式不正确');

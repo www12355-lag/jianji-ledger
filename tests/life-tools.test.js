@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict');
+const life=require('../life-tools.js'),report=require('../share-report.js'),backup=require('../backup-tools.js');
+const bill={id:'local1',title:'聚餐',date:'2026-10-13',totalCents:10001,payer:'me',parts:[{id:'me',name:'我',self:true,cents:5001,paidCents:0},{id:'other',name:'未加好友的同事',cents:5000,paidCents:0}]};
+assert.equal(life.cents('0.29'),29);assert.throws(()=>life.cents('1.001'));assert.deepEqual(life.split(10001,3),[3334,3334,3333]);
+assert.equal(life.validateBill(bill),bill);assert.throws(()=>life.validateBill({...bill,date:'2026-02-30'}));assert.throws(()=>life.validateBill({...bill,parts:bill.parts.map(p=>({...p,paidCents:NaN}))}));
+assert.throws(()=>life.validateBill({...bill,parts:bill.parts.map(p=>({...p,self:true}))}));
+const wish={id:'wish1',name:'耳机',priceCents:50000,reason:'通勤使用',created:'2026-10-13T00:00:00Z',hours:24,state:'waiting'};
+assert.equal(life.wishStatus(wish,Date.parse('2026-10-13T01:00:00Z')),'还剩 23 小时');assert.equal(life.wishStatus(wish,Date.parse('2026-10-14T00:00:00Z')),'冷静期已结束');
+const bounds=report.period('year','2026-10-13','2026-10-13');assert.equal(bounds.start,'2026-01-01');assert.equal(bounds.end,'2026-12-31');
+const entries=[{id:'a',type:'expense',category:'购物',date:'2026-01-03',amount:100},{id:'b',type:'refund',category:'购物',refundOf:'a',date:'2026-02-03',amount:20},{type:'expense',category:'购物',date:'2026-12-03',amount:999},{type:'expense',category:'购物',date:'2026-01-04',amount:999,deletedAt:'yes'}];
+const goals=[{target:100,contributions:[{date:'2025-12-01',amount:50},{date:'2026-01-03',amount:50}]},{target:100,contributions:[{date:'2025-12-01',amount:100}]},{target:100,contributions:[{date:'2026-12-01',amount:100}]}];
+const annual=life.annual(entries,goals,bounds);assert.equal(annual.months[0].net,100);assert.equal(annual.months[1].net,-20);assert.equal(annual.months[11].net,0);assert.equal(annual.completedGoals,1);
+(async()=>{const data={entries:entries.slice(0,2),budgets:{},wishList:[wish],aaBills:[bill]};const blob=await backup.createBackup(data,[],'only-device-secret');assert(!blob.includes('only-device-secret'));assert(!blob.includes('耳机'));const restored=await backup.readBackup(blob,'only-device-secret');assert.deepEqual(restored.data,data);await assert.rejects(backup.readBackup(blob,'wrong-password'));await assert.rejects(backup.createBackup({...data,aaBills:[{...bill,totalCents:1}]},[],'only-device-secret'));console.log('AA rounding/local participants, wishlist timing, annual boundaries and encrypted restore: passed');})();

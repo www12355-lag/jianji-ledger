@@ -1,0 +1,8 @@
+function drawAnnualPoster(canvas,report,options){
+  const base=document.createElement('canvas');drawReportPoster(base,report,options);canvas.width=1080;canvas.height=2320;const c=canvas.getContext('2d'),t=reportThemes[options.theme]||reportThemes.purple;c.fillStyle=t.paper;c.fillRect(0,0,1080,2320);c.drawImage(base,0,0,1080,1435,0,0,1080,1435);
+  const text=(s,x,y,size=26,color=t.ink,weight=400)=>{c.font=`${weight} ${size}px "Microsoft YaHei","PingFang SC",sans-serif`;c.fillStyle=color;c.fillText(s,x,y);};const card=(y,h)=>{c.beginPath();c.roundRect(64,y,952,h,32);c.fillStyle=t.card;c.fill();};
+  const metrics=JianjiLife.annual(data.entries,data.savingsGoals,report.bounds);card(1450,520);text('十二个月，串成生活的故事',96,1510,29,t.ink,600);text(options.hideAmounts?'按每月已记收支笔数回看':'按每月记账净支出回看（含退款抵扣）',96,1550,23,t.muted);
+  const vals=metrics.months.map(m=>options.hideAmounts?m.count:Math.abs(m.net)),max=Math.max(1,...vals);
+  metrics.months.forEach((m,i)=>{const x=106+i*74,height=200*vals[i]/max, future=report.bounds.start.slice(0,4)+'-'+String(m.month).padStart(2,'0')>report.bounds.through.slice(0,7);c.fillStyle=future?t.soft:t.accent;c.beginPath();c.roundRect(x,1810-height,42,Math.max(2,height),8);c.fill();text(String(m.month),x+7,1850,23,t.muted);if(options.hideAmounts)text(String(m.count),x+5,1788-height,19,t.accent);});
+  text('没记账不代表没有消费；未来月份尚未统计。',96,1914,21,t.muted);card(1996,175);text('这一年，也在靠近自己的愿望',96,2050,29,t.ink,600);text(`已有 ${metrics.completedGoals} 个储蓄目标在本年达到目标金额`,96,2112,28,t.accent);text('简记 · 留住日常的小片段',66,2240,25,t.accent,600);text(options.hideAmounts?'已隐藏具体金额 · 仅展示已记录的数据':'仅展示已记录的数据',620,2240,22,t.muted);
+}

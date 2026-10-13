@@ -10,6 +10,7 @@ import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Locale;
+import java.util.TimeZone;
 
 final class ReminderScheduler {
     static final String PREF = "jianji-reminders";
@@ -33,6 +34,7 @@ final class ReminderScheduler {
     }
     static void schedule(Context context, JSONObject rule) {
         if (rule == null || !rule.optBoolean("active", true)) return;
+        if (onceDelivered(context, rule)) return;
         long when = nextTime(rule, System.currentTimeMillis());
         if (when <= 0) return;
         AlarmManager manager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
@@ -40,6 +42,16 @@ final class ReminderScheduler {
     }
     static long nextTime(JSONObject rule, long after) {
         try {
+            if ("once".equals(rule.optString("frequency"))) {
+                SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+                fmt.setLenient(false); fmt.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
+                Calendar notice = Calendar.getInstance(TimeZone.getTimeZone("Asia/Shanghai"));
+                notice.setTime(fmt.parse(rule.getString("startDate"))); atNine(notice);
+                Calendar end = Calendar.getInstance(TimeZone.getTimeZone("Asia/Shanghai"));
+                end.setTime(fmt.parse(rule.getString("dueDate"))); end.add(Calendar.DAY_OF_MONTH, 1);
+                if (after >= end.getTimeInMillis()) return -1;
+                return notice.getTimeInMillis() > after ? notice.getTimeInMillis() : after + 5000;
+            }
             SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
             dateFormat.setLenient(false);
             Date first = dateFormat.parse(rule.getString("startDate"));
@@ -61,6 +73,9 @@ final class ReminderScheduler {
         } catch (Exception ignored) { }
         return -1;
     }
+    private static String onceKey(JSONObject rule) { return "once-" + rule.optString("id") + "-" + rule.optString("startDate") + "-" + rule.optString("dueDate"); }
+    static boolean onceDelivered(Context context, JSONObject rule) { return "once".equals(rule.optString("frequency")) && context.getSharedPreferences(PREF, 0).getBoolean(onceKey(rule), false); }
+    static void markOnceDelivered(Context context, JSONObject rule) { if ("once".equals(rule.optString("frequency"))) context.getSharedPreferences(PREF, 0).edit().putBoolean(onceKey(rule), true).apply(); }
     private static void atNine(Calendar date) { date.set(Calendar.HOUR_OF_DAY, 9); date.set(Calendar.MINUTE, 0); date.set(Calendar.SECOND, 0); date.set(Calendar.MILLISECOND, 0); }
     private static PendingIntent intent(Context context, String id, int flags) {
         Intent intent = new Intent(context, ReminderReceiver.class).setAction(ACTION + "." + id).putExtra("id", id);

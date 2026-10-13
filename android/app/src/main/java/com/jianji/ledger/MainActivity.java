@@ -8,11 +8,15 @@ import android.webkit.ValueCallback;
 import android.webkit.WebView;
 
 import android.os.Bundle;
+import androidx.activity.OnBackPressedCallback;
 
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(BackupFilePlugin.class);
+        registerPlugin(ReportExportPlugin.class);
+        registerPlugin(SocialSessionPlugin.class);
+        registerPlugin(CloudSecretPlugin.class);
         registerPlugin(LedgerStorePlugin.class);
         registerPlugin(PaymentNotificationPlugin.class);
         registerPlugin(ImageOcrPlugin.class);
@@ -20,6 +24,14 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ReminderPlugin.class);
         registerPlugin(AutoBackupPlugin.class);
         super.onCreate(savedInstanceState);
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override public void handleOnBackPressed() {
+                bridge.getWebView().evaluateJavascript(
+                    "typeof window.handleAppBack === 'function' && window.handleAppBack()",
+                    result -> { if (!"true".equals(result)) moveTaskToBack(true); }
+                );
+            }
+        });
         bridge.getWebView().setWebChromeClient(new BridgeWebChromeClient(bridge) {
             @Override public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 PluginHandle handle = bridge.getPlugin("AppLock");

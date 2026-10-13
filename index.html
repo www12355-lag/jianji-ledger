@@ -7,6 +7,10 @@
   <title>简记 · 每一天都清楚</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="design.css">
+  <link rel="stylesheet" href="social.css">
+  <link rel="stylesheet" href="life.css">
+  <link rel="stylesheet" href="possessions.css">
+  <link rel="stylesheet" href="possessions-plus.css">
 </head>
 <body>
   <main class="app">
@@ -32,11 +36,14 @@
       <div id="homeDraft" class="draft-banner" hidden><span><b id="draftSummary"></b><small>已自动保留，可继续填写</small></span><button type="button" id="resumeDraft">继续</button><button type="button" id="discardDraft">清除</button></div>
       <button id="homeSavings" class="savings-home" type="button" hidden></button>
       <button id="homeTodo" class="home-todo" type="button" hidden></button>
-      <section class="quick-card" aria-label="分类速记">
+      <section class="quick-card" id="quickCard" aria-label="快捷记账">
+        <div id="quickSection">
         <div class="cardhead"><div><h2>分类速记</h2><p>选择类别，快速记一笔</p></div></div>
         <div class="category-shortcuts" id="categoryShortcuts"></div>
+        </div><div id="templateSection">
         <div class="cardhead template-head"><h2>常用模板</h2><button class="link" id="manageTemplates">管理模板</button></div>
         <div id="templateShortcuts" class="template-shortcuts"></div>
+        </div>
       </section>
       <div class="home-grid">
         <section class="card" id="budgetCard">
@@ -96,13 +103,14 @@
         <label class="all-months"><input id="missingCheckEnabled" type="checkbox" checked> 超过 3 天没有新账目时提示检查</label>
         <div id="backupReminder" class="backup-reminder" hidden></div>
       </section>
-      <button class="home-feature-link" id="homeFeatures" type="button"><span aria-hidden="true">▦</span><span><b>打开更多功能</b><small>预算、计划、项目和账本设置都在这里</small></span><span aria-hidden="true">›</span></button>
       <p class="foot">金额单位：人民币 · 账本保存在本机</p>
     </section>
 
     <section class="page" id="featuresPage" aria-label="功能" hidden>
-      <div class="page-heading"><div><h1>功能</h1><p>按用途找到需要的工具</p></div></div>
-      <div class="feature-group-grid" aria-label="功能分类">
+      <input id="toolSearch" class="tool-search" type="search" placeholder="搜索功能，例如：预算、备份" aria-label="搜索功能">
+      <section id="favoritesSection" class="favorite-section" hidden><h2>我的收藏</h2><div id="favoriteTools" class="tool-grid"></div></section>
+      <div id="toolSearchResults" class="tool-grid" aria-label="功能搜索结果" hidden></div><p id="toolSearchEmpty" class="empty" hidden>没有找到相关功能，换一个关键词试试</p>
+      <div class="feature-group-grid" id="featureGroups" aria-label="功能分类">
         <button type="button" data-feature-group="plan" aria-expanded="false"><span class="feature-glyph" aria-hidden="true">¥</span><b>预算与计划</b><small>钱够不够用</small></button>
         <button type="button" data-feature-group="daily" aria-expanded="false"><span class="feature-glyph" aria-hidden="true">↔</span><b>日常与往来</b><small>要记的事和待收款</small></button>
         <button type="button" data-feature-group="manage" aria-expanded="false"><span class="feature-glyph" aria-hidden="true">⚙</span><b>账本管理</b><small>账户、备份与安全</small></button>
@@ -132,19 +140,39 @@
       <label class="all-months"><input id="allMonths" type="checkbox"> 搜索所有月份</label>
       </div>
       <div class="detail-summary"><span id="filteredTotals"></span><button type="button" class="link" id="clearFilters">清空筛选</button></div>
+      <div id="detailRangeBanner" class="range-banner" hidden><span id="detailRangeText"></span><div><button type="button" id="backToStats">返回统计</button><button type="button" id="clearDetailRange">清除日期范围</button></div></div>
       <section class="card detail-card"><div class="record-list" id="records"></div></section>
     </section>
 
     <section class="page" id="statsPage" aria-label="统计" hidden>
-      <div class="page-heading"><div><h1>收支统计</h1><p>看看钱花在了哪里</p></div></div>
+      <div class="page-heading"><div><h1>收支统计</h1><p>看看钱花在了哪里</p></div><button type="button" class="report-open" id="openShareReport">账本小报 ↗</button></div>
+      <div class="stats-controls"><label for="statsMode">统计范围</label><select id="statsMode"><option value="month">所选月份</option><option value="year">所选年份</option><option value="custom">自选日期</option></select></div>
+      <form id="statsCustomForm" class="stats-custom" hidden><label class="field">开始日期<input type="date" id="statsStart" required></label><label class="field">结束日期<input type="date" id="statsEnd" required></label><button class="primary" type="submit">查看统计</button></form>
+      <p id="statsRangeLabel" class="stats-range-label"></p>
       <div class="stat-grid">
-        <section class="stat-card"><span>本月收入</span><strong id="statsIncome">¥ 0.00</strong></section>
-        <section class="stat-card"><span>本月净支出</span><strong id="statsExpense">¥ 0.00</strong></section>
+        <button type="button" class="stat-card" id="statsIncomeCard" aria-label="查看期间收入明细"><span>期间收入</span><strong id="statsIncome">¥ 0.00</strong></button>
+        <button type="button" class="stat-card" id="statsExpenseCard" aria-label="查看期间支出及退款明细"><span>期间净支出</span><strong id="statsExpense">¥ 0.00</strong></button>
         <section class="stat-card"><span>本月结余</span><strong id="statsBalance">¥ 0.00</strong></section>
       </div>
       <section class="card stats-card"><div class="cardhead"><h2>支出分类</h2></div><div id="categoryStats"></div></section>
-      <section class="card stats-card"><div class="cardhead"><h2>近 6 个月</h2><span class="chart-legend"><i class="legend-income"></i>收入 <i class="legend-expense"></i>净支出</span></div><div id="trendStats"></div></section>
-      <section class="card stats-card"><div class="cardhead"><h2>月末回顾</h2></div><div id="monthlyReview"></div></section>
+      <section class="card stats-card"><div class="cardhead"><h2 id="trendTitle">近 6 个月</h2><span class="chart-legend"><i class="legend-income"></i>收入 <i class="legend-expense"></i>净支出</span></div><div id="trendStats"></div></section>
+      <section class="card stats-card"><div class="cardhead"><h2 id="reviewTitle">期间回顾</h2></div><div id="monthlyReview"></div></section>
+    </section>
+    <section class="page me-page" id="mePage" aria-label="我的" hidden>
+      <button id="myProfile" class="my-profile" type="button"></button>
+      <div class="my-menu">
+        <button data-social-view="friends"><span class="my-menu-icon">♧</span><span><b>我的好友</b><small id="myFriendCount">添加朋友，一起记账</small></span><i>›</i></button>
+        <button data-social-view="messages"><span class="my-menu-icon">▤</span><span><b>消息</b><small>聊聊生活和消费计划</small></span><em id="myUnread" hidden></em><i>›</i></button>
+        <button data-social-view="feed"><span class="my-menu-icon">♡</span><span><b>好友分享</b><small>看看朋友的消费小报</small></span><i>›</i></button>
+      </div>
+      <div class="my-menu">
+        <button data-social-view="auto"><span class="my-menu-icon">↻</span><span><b>自动分享</b><small id="myAutoLabel">由你选择，默认关闭</small><small id="myAutoDetail"></small></span><i>›</i></button>
+        <button data-social-view="cloud"><span class="my-menu-icon">☁</span><span><b>加密云备份</b><small id="cloudMenuLabel">默认关闭，由你设置备份密码</small></span><i>›</i></button>
+        <button data-social-view="ranking"><span class="my-menu-icon">♕</span><span><b>排行榜</b><small id="challengeMenuLabel">自愿参加记账挑战</small></span><i>›</i></button>
+      </div>
+      <section class="my-backup-card"><div class="my-backup-head"><span class="my-menu-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m-4 4 4-4 4 4M4 16v4h16v-4"/></svg></span><b>账本备份</b><span id="myBackupBadge"></span></div><p id="myBackupLast"></p><p id="myBackupHint" class="import-help"></p><button id="myBackupOpen" class="quiet-button" type="button">现在备份 ›</button><small>登录账号不会同步完整账本，换手机前请先备份。</small></section>
+      <p id="myStatus" class="import-help" aria-live="polite"></p>
+      <p class="foot">完整账本留在本机 · 分享内容由你决定</p>
     </section>
   </main>
 
@@ -155,6 +183,7 @@
       <button class="nav-item" data-page="details"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>明细</span></button>
       <button class="nav-item" data-page="stats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20v-7M10 20V5M16 20v-9M22 20V3M2 21h21"/></svg><span>统计</span></button>
       <button class="nav-item" data-page="features"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>功能</span></button>
+      <button class="nav-item" data-page="me"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg><span>我的</span><em id="myNavDot" hidden></em></button>
     </div>
   </nav>
 
@@ -309,8 +338,100 @@
   <div class="modalback" id="savingsEditorModal"><div class="modal"><div class="modalhead"><h2 id="savingsEditorTitle">新建储蓄目标</h2><button type="button" class="close" data-back-savings aria-label="返回储蓄目标">×</button></div><form id="savingsForm"><label class="field">目标名称<input id="savingsName" maxlength="40" placeholder="例如：旅行基金" required></label><label class="field">目标金额<input id="savingsTarget" type="number" inputmode="decimal" min="0.01" step="0.01" required></label><label class="field">目标日期（选填）<input id="savingsDeadline" type="date"></label><button id="saveSavingsGoal" class="primary">创建目标</button><button type="button" class="quiet-button" id="cancelSavingsEdit" hidden>取消编辑</button></form></div></div>
   <div class="modalback" id="savingsDetailModal"><div class="modal"><div class="modalhead"><h2 id="savingsDetailTitle">目标详情</h2><button type="button" class="close" data-back-savings aria-label="返回储蓄目标">×</button></div><div id="savingsDetailContent"></div></div></div>
   <div class="modalback" id="lockSettingsModal"><div class="modal"><div class="modalhead"><h2>应用锁</h2><button class="close" data-close="lockSettingsModal" aria-label="关闭">×</button></div><p class="import-help">当前状态：<b id="lockEnabledStatus"></b></p><button id="toggleAppLock" class="primary" type="button">开启应用锁</button><label class="field">离开应用多久后锁定<select id="lockDelay"><option value="0">立即锁定</option><option value="30000">离开 30 秒</option><option value="60000">离开 1 分钟</option></select></label><p class="import-help">熄屏和重新启动仍会立即锁定。拍照或选图后直接返回，无需再次解锁。修改设置需系统身份验证。</p></div></div>
+  <div class="modalback" id="socialModal"><div class="modal social-modal">
+    <div class="modalhead"><h2 id="socialTitle">我的账号</h2><button class="close" data-close="socialModal" aria-label="返回我的">×</button></div>
+    <div id="socialAuthView">
+      <div class="tabs social-auth-tabs"><button type="button" data-social-auth="login">登录</button><button type="button" data-social-auth="register">注册</button><button type="button" data-social-auth="recover">找回账号</button></div>
+      <p id="socialAuthHelp" class="import-help"></p>
+      <form id="socialAuthForm">
+        <label class="field">账号<input id="socialUsername" autocomplete="username" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9_]{3,24}" maxlength="24" required placeholder="3–24 位字母、数字或下划线"></label>
+        <label class="field" id="socialNicknameField" hidden>昵称<input id="socialNickname" maxlength="24" placeholder="好友看到的名字"></label>
+        <label class="field"><span id="socialPasswordLabel">密码</span><input id="socialPassword" type="password" minlength="10" maxlength="128" required autocomplete="current-password" placeholder="至少 10 位"></label>
+        <label class="field" id="socialEnrollmentField" hidden>内测注册口令<input id="socialEnrollment" type="password" maxlength="100" autocomplete="off" placeholder="由管理员提供"></label>
+        <label class="field" id="socialRecoveryField" hidden>账号恢复码<input id="socialRecovery" type="password" maxlength="100" autocomplete="off" placeholder="注册时保存的恢复码"></label>
+        <button class="primary" id="socialAuthSubmit">登录好友圈</button>
+      </form>
+    </div>
+    <div id="socialHub" hidden>
+      <aside id="socialRecoveryNotice" class="social-recovery" hidden><b>请保存账号恢复码</b><p>忘记密码时用它找回账号。只在本次显示，请保存到自己的密码管理工具，不要发给好友。</p><code id="socialRecoveryCode"></code><button id="socialRecoveryDone" type="button">我已保存，隐藏恢复码</button></aside>
+      <div id="socialCommunity">
+        <section id="socialAccountPanel" data-social-panel="account" hidden>
+          <div id="socialMe" class="social-me"></div>
+          <form id="socialProfileForm"><label class="field">账号<input id="socialAccountName" disabled></label><label class="field">昵称<input id="socialProfileNickname" maxlength="24" required></label><label class="field">个人介绍<textarea id="socialBio" maxlength="120" rows="3" placeholder="写一句关于自己的话"></textarea></label><label class="field">头像颜色<select id="socialAvatar"><option value="purple">奶油紫</option><option value="mint">薄荷绿</option><option value="peach">蜜桃橙</option><option value="blue">天空蓝</option></select></label><button class="primary">保存资料</button></form>
+          <p class="import-help">账号名称不能修改。昵称显示给好友，个人介绍保存在你的账号资料中。</p><button id="socialLogout" class="quiet-button" type="button">退出登录</button>
+        </section>
+        <section id="socialFriendsPanel" data-social-panel="friends" hidden>
+          <section class="social-panel"><h3>邀请朋友</h3><p class="import-help">把自己的邀请码发给朋友，对方申请后再由你确认。</p><div class="social-invite"><code id="socialInviteCode"></code><button id="socialCopyInvite" type="button">复制</button><button id="socialRotateInvite" type="button">更换</button></div><form id="socialAddForm" class="social-add"><input id="socialFriendCode" maxlength="12" minlength="12" required aria-label="好友邀请码" placeholder="好友的 12 位邀请码"><button type="submit">发送申请</button></form></section>
+          <section class="social-panel"><h3>好友申请</h3><div id="socialRequests"></div></section><section class="social-panel"><h3>我的好友</h3><input id="socialFriendSearch" class="tool-search" type="search" placeholder="搜索昵称、备注或账号" aria-label="搜索好友"><div id="socialFriends"></div></section>
+        </section>
+        <section id="socialFriendDetailPanel" data-social-panel="friend" hidden><div class="friend-detail-toolbar"><button id="socialFriendBack" class="quiet-button" type="button">‹ 返回好友</button><button id="socialFriendMore" class="quiet-button" type="button" aria-expanded="false">更多 ⋯</button></div><div id="socialFriendMoreActions" hidden><button id="socialFriendDelete" class="quiet-button danger" type="button">删除这位好友</button></div><div id="socialFriendProfile" class="friend-profile"></div><form id="socialFriendRemarkForm"><label class="field">好友备注<input id="socialFriendRemark" maxlength="40" placeholder="例如：大学同学小周"></label><p class="import-help">备注只对你可见，不会修改对方昵称。</p><button class="primary">保存备注</button></form><button id="socialFriendChat" class="quiet-button" type="button">发消息 ›</button></section>
+        <section id="socialMessagesPanel" data-social-panel="messages" hidden><p class="import-help">仅当前好友可以互发消息。打开消息页时自动检查新消息；暂不提供应用关闭后的推送通知。</p><div id="socialConversations"></div></section>
+        <section id="socialChatPanel" data-social-panel="chat" hidden><button id="socialChatBack" class="quiet-button" type="button">‹ 返回消息</button><button id="socialChatOlder" class="quiet-button" type="button" hidden>查看更早消息</button><div id="socialChatMessages" class="chat-messages" aria-live="polite"></div><button id="socialChatLatest" class="chat-latest" type="button" hidden>有新消息，点击查看 ↓</button><form id="socialChatForm" class="chat-compose"><textarea id="socialChatInput" rows="2" maxlength="2000" required placeholder="发一条消息…" aria-label="消息内容"></textarea><button id="socialChatSend" class="primary">发送</button></form><p class="import-help">发送失败时点消息重试。关闭应用后暂不推送消息。</p></section>
+        <section id="socialFeedPanel" data-social-panel="feed" hidden><button id="socialShareOpen" class="primary" type="button">分享一份消费小报</button><button data-social-view="auto" class="quiet-button" type="button">设置自动分享 ›</button><div id="socialFeed"></div><p id="socialFeedHelp" class="import-help"></p></section>
+        <section id="socialAutoPanel" data-social-panel="auto" hidden>
+          <p class="import-help">开启后，记账保存时自动更新所选周期的小报，分享给你勾选的好友。需要应用已打开、已解锁且联网；离线时在下次联网打开补发。应用完全关闭时不会定时上传。</p>
+          <div id="socialAutoSummary" class="auto-summary"></div>
+          <form id="socialAutoForm"><label class="option-row"><span>开启自动分享</span><input id="socialAutoEnabled" type="checkbox"></label><label class="field">更新哪个周期<select id="socialAutoMode"><option value="day">当天日报</option><option value="week">本周周报</option><option value="month">本月月报</option></select></label><label class="option-row"><span>隐藏具体金额</span><input id="socialAutoAmounts" type="checkbox" checked></label><label class="option-row"><span>隐藏分类名称</span><input id="socialAutoCategories" type="checkbox" checked></label><label class="option-row" id="socialAutoBudgetField"><span>分享本月预算合计进度</span><input id="socialAutoBudget" type="checkbox"></label><h3>自动分享给谁</h3><div id="socialAutoRecipients" class="social-recipients"></div><p class="import-help">新增好友不会自动加入名单。关闭只停止后续更新，已分享的小报可在好友分享中撤回。设置仅对本机当前账号生效。同一周期的小报会按此处设置替换内容和接收名单。</p><h3>分享内容预览</h3><article id="socialAutoPreview" class="social-report social-preview"></article><button class="primary">保存自动分享设置</button></form>
+          <p id="socialAutoStatus" class="import-help" aria-live="polite"></p>
+        </section>
+        <section id="socialRankingPanel" data-social-panel="ranking" hidden><p class="import-help">自愿加入挑战，只分享记账天数和完成率，不上传消费金额。排行对本挑战已加入的参与者可见；结果仅反映已记账天数。</p><button id="challengeCreateOpen" class="primary" type="button">发起记账挑战</button><form id="challengeForm" hidden><label class="field">挑战名称<input id="challengeTitle" maxlength="40" required placeholder="例如：一起记录生活"></label><label class="field">挑战目标<select id="challengeMode"><option value="streak7">连续记账 7 天</option><option value="days20">30 天内记账 20 天</option></select></label><label class="field">开始日期<input id="challengeStart" type="date" required></label><h3>邀请好友（可选）</h3><div id="challengeFriends" class="social-recipients"></div><p class="import-help">好友确认后才参加；每天有已保存收支时自动记录一天。开始日之后不能再加入，不支持补填或预填。</p><button class="primary">创建挑战</button><button id="challengeCancel" class="quiet-button" type="button">取消</button></form><div id="challengeList"></div></section>
+        <section id="socialCloudPanel" data-social-panel="cloud" hidden><div id="cloudSummary" class="auto-summary"></div><p class="import-help">完整账本在本机加密后上传，仅你的账号能下载。备份密码不是登录密码，忘记后无法解密，请自行保存。云端提供最近一份备份下载，单份上限 20 MB。删除后停止提供下载；加密灾备副本随最多 14 份服务器备份轮换清理。</p><label class="field">备份密码<input id="cloudPassword" type="password" minlength="8" maxlength="128" autocomplete="off" placeholder="至少 8 位；已有加密凭据可留空"></label><label class="option-row"><span>包含账目照片</span><input id="cloudPhotos" type="checkbox" checked></label><p class="import-help">不包含照片时，恢复后不显示图片凭证。</p><label class="option-row"><span>每日自动加密备份</span><input id="cloudEnabled" type="checkbox"></label><p class="import-help">默认关闭。在应用已打开、解锁并联网时，每天最多自动备份一次。Android 会将密码加密保存在本机；网页仅在当前会话保留密码。</p><button id="cloudSaveSettings" class="primary" type="button">保存自动备份设置</button><button id="cloudUpload" class="quiet-button" type="button">立即加密备份</button><button id="cloudVerifyRestore" class="quiet-button" type="button">下载并验证恢复</button><div id="cloudRestorePreview" class="auto-summary" hidden></div><button id="cloudConfirmRestore" class="primary" type="button" hidden>确认替换本机账本</button><button id="cloudDelete" class="quiet-button danger" type="button">删除云端备份</button><button id="cloudLocalBackup" class="quiet-button" type="button">先保存本机完整备份 ›</button><p id="cloudStatus" class="import-help" aria-live="polite"></p></section>
+        <button id="socialRefresh" class="quiet-button" type="button">刷新</button>
+      </div>
+      <div id="socialShareView" hidden>
+        <button id="socialShareBack" class="quiet-button" type="button">‹ 返回好友圈</button>
+        <h3>准备分享</h3><p class="import-help">先预览，再选择接收好友。同一周期重新分享，会替换旧内容和接收名单。手动分享只在确认时更新。若本周期开启自动分享，下次更新会按自动分享设置替换内容和接收名单。</p>
+        <div class="social-share-options"><label class="field">周期<select id="socialMode"><option value="day">日报</option><option value="week">周报</option><option value="month">月报</option></select></label><label class="field">报告日期<input id="socialAnchor" type="date"></label></div>
+        <label class="option-row"><span>隐藏具体金额</span><input id="socialHideAmounts" type="checkbox" checked></label>
+        <label class="option-row"><span>隐藏分类名称</span><input id="socialHideCategories" type="checkbox" checked></label>
+        <label class="option-row" id="socialBudgetField"><span>分享本月分类预算合计进度</span><input id="socialShareBudget" type="checkbox"></label>
+        <article id="socialPreview" class="social-report social-preview"></article>
+        <h3>分享给谁</h3><div id="socialShareRecipients" class="social-recipients"></div>
+        <button id="socialPublish" class="primary" type="button">确认分享给所选好友</button>
+      </div>
+    </div>
+    <p id="socialStatus" class="import-help social-status" role="status" aria-live="polite"></p>
+  </div></div>
+
+  <div class="modalback" id="wishModal"><div class="modal"><div class="modalhead"><h2>想买清单</h2><button class="close" data-close="wishModal" aria-label="关闭">×</button></div><p class="import-help">先记下愿望，留一点时间想清楚。清单不会自动生成账目。</p><button id="wishNew" class="primary" type="button">记下一个想买的东西</button><form id="wishForm" hidden><label class="field">物品名称<input id="wishName" maxlength="40" required></label><label class="field">计划价格<input id="wishPrice" type="number" min="0.01" step="0.01" required></label><label class="field">购买理由<textarea id="wishReason" maxlength="160" rows="2"></textarea></label><label class="field">冷静多久<select id="wishHours"><option value="24">24 小时</option><option value="72">3 天</option><option value="168">7 天</option></select></label><button class="primary">保存愿望</button><button id="wishCancel" class="quiet-button" type="button">取消</button></form><div id="wishSummary" class="import-help"></div><div id="wishList"></div></div></div>
+  <div class="modalback" id="aaModal"><div class="modal"><div class="modalhead"><h2 id="aaTitle">AA 分账</h2><button class="close" data-close="aaModal" aria-label="关闭">×</button></div><div id="aaListView"><p class="import-help">未加好友也能记录分摊；好友确认后可在线查看、提交结算，由发起人核对。这里只记录分摊，不会自动改变账本收支。</p><button id="aaNew" class="primary" type="button">新建分摊单</button><button id="aaRefresh" class="quiet-button" type="button">刷新在线分摊</button><div id="aaBills"></div></div><form id="aaForm" hidden><label class="field">用途<input id="aaName" maxlength="40" required placeholder="例如：周末聚餐"></label><label class="field">日期<input id="aaDate" type="date" required></label><label class="field">总金额<input id="aaTotal" type="number" min="0.01" step="0.01" required></label><label class="field">分摊方式<select id="aaSplit"><option value="equal">均分</option><option value="custom">自定义金额</option></select></label><div id="aaParts"></div><button id="aaAddPerson" class="quiet-button" type="button">＋ 增加参与人</button><label class="field">谁垫付<select id="aaPayer"></select></label><label class="field">关联已有支出（可选）<select id="aaEntry"></select></label><p id="aaSum" class="import-help"></p><button class="primary">保存分摊单</button><button id="aaCancel" class="quiet-button" type="button">取消</button></form><div id="aaDetail" hidden></div><p id="aaStatus" class="import-help" aria-live="polite"></p></div></div>
+  <div class="modalback" id="possessionsModal"><div class="modal possessions-modal">
+    <div class="modalhead"><div><h2 id="possessionsTitle">归物本</h2><small class="poss-subtitle" id="possessionsSubtitle">让每一件喜欢的东西，陪你久一点</small></div><button class="close" id="possessionsClose" type="button" aria-label="关闭归物本">×</button></div>
+    <section id="possessionsListView">
+      <div class="poss-summary"><div class="poss-summary-top"><span id="possessionsCount">我的物品</span><button id="possessionsPrivacy" type="button" aria-label="隐藏金额"></button></div><small>物品购入总额</small><strong id="possessionsTotal">¥ 0.00</strong><div class="poss-summary-bottom"><span>合计日均净成本 <b id="possessionsDaily">¥ 0.00 / 天</b></span><span class="poss-summary-decoration" aria-hidden="true">✦</span></div></div>
+      <div class="poss-controls"><input id="possessionsSearch" type="search" placeholder="找一件物品…" aria-label="搜索物品"><button id="possessionsNew" type="button">＋ 添加</button></div>
+      <div class="pos-utility"><button id="posOpenReview" type="button">物品回顾 ↗</button><button id="posOpenTrash" type="button">回收站 <span id="posTrashCount"></span></button></div><div id="posUndoBar" class="pos-undo" hidden><span>物品已移到回收站</span><button id="posUndo" type="button">撤销</button></div>
+      <div class="poss-filters"><label><span class="sr-only">物品状态</span><select id="possessionsState"><option value="">全部状态</option><option value="active">在用</option><option value="idle">闲置</option><option value="sold">已卖出</option><option value="retired">已退役</option></select></label><label><span class="sr-only">物品类别</span><select id="possessionsCategory"></select></label><label><span class="sr-only">排序方式</span><select id="possessionsSort"><option value="new">最近购入</option><option value="price">价格从高到低</option><option value="daily">日均成本从高到低</option><option value="age">陪伴最久</option></select></label></div>
+      <p id="possessionsFilterHint" class="poss-filter-hint"></p><div id="possessionsList"></div>
+      <p class="poss-footnote">日均净成本 =（购入＋追加费用－回收金额）÷ 持有天数（含开始当天）。闲置继续计时，卖出或退役后固定到结束日；不代表每天发生的新支出。</p>
+    </section>
+    <form id="possessionsForm" hidden>
+      <div class="poss-cover-editor"><div id="possessionsCoverPreview" class="poss-cover-large"></div><div><b>物品封面</b><p>内置图标，或用自己的照片</p><div class="poss-cover-tabs"><button id="possessionsUseIcon" type="button">选图标</button><button id="possessionsUsePhoto" type="button">用图片</button></div></div></div>
+      <section id="possessionsIconPicker"><div class="poss-icon-search"><input id="possessionsIconSearch" type="search" placeholder="搜索图标，例如：手机、耳机" aria-label="搜索内置图标"></div><div id="possessionsIcons" class="poss-icon-grid"></div></section>
+      <section id="possessionsPhotoPicker" hidden><div class="poss-photo-actions"><button id="possessionsCamera" type="button">拍照</button><button id="possessionsGallery" type="button">选择图片</button></div><input id="possessionsCameraInput" type="file" accept="image/*" capture="environment" hidden><input id="possessionsImageInput" type="file" accept="image/*" hidden><p class="import-help">照片会在本机缩小后保存，可作为物品卡片的封面。</p></section>
+      <label class="field">物品名称<input id="posName" maxlength="60" required placeholder="例如：陪我通勤的耳机"></label>
+      <div class="poss-form-grid"><label class="field">购入金额<input id="posPrice" type="number" min="0" step="0.01" required placeholder="0.00"></label><label class="field">物品类别<select id="posCategory"></select></label></div>
+      <div class="poss-form-grid"><label class="field">购入日期<input id="posPurchaseDate" type="date" required></label><label class="field">开始持有日期<input id="posStartDate" type="date" required></label></div>
+      <div class="poss-form-grid"><label class="field">物品状态<select id="posState"><option value="active">在用</option><option value="idle">闲置</option><option value="sold">已卖出</option><option value="retired">已退役</option></select></label><label id="posEndField" class="field" hidden>结束日期<input id="posEndDate" type="date"></label></div>
+      <details class="pos-extra-options"><summary>小目标与售后<span>日均目标、保修、保养与凭证</span></summary><label class="field">希望日均净成本降到<input id="posTarget" type="number" min="0.01" step="0.01" placeholder="例如：2.00；留空不设目标"></label><div class="poss-form-grid"><label class="field">保修到期日<input id="posWarranty" type="date"></label><label class="field">下次保养日期<input id="posMaintenance" type="date"></label></div><label class="field">提前提醒<select id="posLead"><option value="0">当天</option><option value="1">提前 1 天</option><option value="3">提前 3 天</option><option value="7" selected>提前 7 天</option><option value="14">提前 14 天</option><option value="30">提前 30 天</option></select></label><label class="option-row"><span>为这件物品设置提醒</span><input id="posCareEnabled" type="checkbox"></label><p class="import-help">Android 开启系统提醒并允许通知后，约上午 9 点提醒；已进入提醒期的记录会尽快提醒一次。实际时间受手机省电设置影响，网页在归物本内提示。</p><div class="pos-receipt"><b>购买／保修凭证（选填）</b><div id="posReceiptPreview"></div><div class="poss-photo-actions"><button id="posReceiptCamera" type="button">拍照</button><button id="posReceiptGallery" type="button">选择图片</button><button id="posReceiptRemove" type="button">移除</button></div><input id="posReceiptCameraInput" type="file" accept="image/*" capture="environment" hidden><input id="posReceiptInput" type="file" accept="image/*" hidden><small>凭证仅供自己查看和备份，不会出现在分享卡中。</small></div></details>
+      <label class="field">关联已有支出（选填）<select id="posEntry"></select></label><p class="import-help">关联时带入金额、日期和图片。保存物品不会重复生成支出；后续修改互不影响。</p>
+      <label class="field">留句话（选填）<textarea id="posNote" rows="2" maxlength="300" placeholder="为什么喜欢它，或它陪你经历的事"></textarea></label>
+      <div id="possessionsLivePreview" class="poss-live-preview"></div><div class="poss-form-actions"><button id="possessionsCancel" type="button">取消</button><button id="possessionsSave" class="primary" type="submit">保存物品</button></div>
+    </form>
+    <section id="possessionsDetail" hidden></section>
+  </div></div>
+  <div class="modalback" id="posTrashModal"><div class="modal possessions-modal"><div class="modalhead"><h2>物品回收站</h2><button class="close" type="button" data-close="posTrashModal" aria-label="返回">×</button></div><p class="import-help">物品、费用和照片保留 30 天，可以恢复。到期后打开应用清理；永久删除不影响原账目。</p><div id="posTrashList"></div></div></div>
+  <div class="modalback" id="posFeeModal"><div class="modal possessions-modal"><div class="modalhead"><h2>成本与回收</h2><button class="close" type="button" data-close="posFeeModal" aria-label="返回">×</button></div><div id="posFeeSummary" class="pos-net-card"></div><p class="import-help">这里只记录物品成本，不会生成或修改收支。关联已有账目带入金额和日期，同一账目在本物品内只计一次。</p><button class="primary" id="posFeeNew" type="button">添加费用或回收金额</button><form id="posFeeForm" hidden><label class="field">记录类型<select id="posFeeKind"><option value="expense">追加费用（维修、配件等）</option><option value="recovery">回收金额（卖出等）</option></select></label><label class="field">说明<input id="posFeeName" maxlength="60" required placeholder="例如：更换电池"></label><div class="poss-form-grid"><label class="field">金额<input id="posFeeAmount" type="number" min="0.01" step="0.01" required></label><label class="field">日期<input id="posFeeDate" type="date" required></label></div><label class="field">关联账目（选填）<select id="posFeeEntry"></select></label><button class="primary" type="submit">保存记录</button><button class="quiet-button" id="posFeeCancel" type="button">取消</button></form><div id="posFeesList"></div></div></div>
+  <div class="modalback" id="posShareModal"><div class="modal possessions-modal"><div class="modalhead"><h2>物品回顾卡</h2><button class="close" type="button" data-close="posShareModal" aria-label="返回">×</button></div><div class="poss-form-grid"><label class="field">卡片内容<select id="posShareMode"><option value="longest">陪伴最久的物品</option><option value="new">今年添了什么</option><option value="year">物品年度回顾</option><option value="achievement">日均成本小成就</option></select></label><label class="field">回顾年份<input id="posShareYear" type="number" min="1970" max="9999" required></label></div><label class="field">标题前缀<input id="posShareName" maxlength="12" placeholder="例如：我的" value="我的"></label><label class="field">卡片配色<select id="posShareTheme"><option value="purple">奶油紫</option><option value="green">薄荷绿</option><option value="peach">蜜桃橙</option></select></label><div class="report-privacy"><label><input id="posShareHide" type="checkbox" checked>隐藏金额</label><label><input id="posSharePhotos" type="checkbox">使用物品照片</label></div><details class="pos-extra-options"><summary>选择放进卡片的物品</summary><div id="posShareChoices"></div></details><p class="import-help">最多展示 6 件物品，汇总按勾选范围计算。仅展示物品名称、封面与汇总，不含备注、费用明细或保修凭证。</p><p id="posShareStatus" class="import-help" aria-live="polite"></p><canvas id="posShareCanvas" class="report-canvas" role="img" aria-label="物品回顾卡预览" hidden></canvas><div class="report-export-bar"><button class="primary secondary" id="posShareSave" type="button" disabled>保存图片</button><button class="primary" id="posShareSend" type="button" disabled>分享卡片</button></div></div></div>
   <div class="toast" id="toast"></div>
+  <div class="modalback" id="shareReportModal"><div class="modal report-modal"><div class="modalhead"><h2>账本小报</h2><button type="button" class="close" data-close="shareReportModal" aria-label="关闭">×</button></div><p class="import-help">把日子做成一张小报。只展示汇总，不包含商户、备注、账户或照片。</p><div class="report-control-grid"><label class="field">报告类型<select id="reportMode"><option value="day">日报</option><option value="week">周报（周一至周日）</option><option value="month">月报</option><option value="year">年度回顾</option></select></label><label class="field">选择日期<input id="reportAnchor" type="date" required></label><label class="field">标题前缀<input id="reportName" maxlength="12" value="我的" placeholder="例如：小林的"></label><label class="field">小报配色<select id="reportTheme"><option value="purple">奶油紫</option><option value="green">薄荷绿</option><option value="peach">蜜桃橙</option></select></label></div><div class="report-privacy"><label><input type="checkbox" id="reportHideAmounts" checked> 隐藏具体金额</label><label><input type="checkbox" id="reportHideCategories"> 隐藏分类名称</label></div><p id="reportStatus" class="import-help" aria-live="polite"></p><canvas id="reportCanvas" class="report-canvas" role="img" aria-label="账本小报图片预览"></canvas><div class="report-export-bar"><button type="button" class="primary secondary" id="saveShareReport" disabled>保存图片</button><button type="button" class="primary" id="shareReport" disabled>分享小报</button></div></div></div>
+  <div class="modalback" id="homeLayoutModal"><div class="modal"><div class="modalhead"><h2>首页设置</h2><button type="button" class="close" data-close="homeLayoutModal" aria-label="关闭">×</button></div><p class="import-help">选择首页显示的内容。没有模板或储蓄目标时，会自动收起对应模块。</p><div id="homeLayoutOptions"></div><button type="button" class="primary" id="saveHomeLayout">保存设置</button></div></div>
+  <div class="modalback" id="recordDetailModal"><div class="modal"><div class="modalhead"><h2>账目详情</h2><button type="button" class="close" data-close="recordDetailModal" aria-label="关闭">×</button></div><div id="recordDetailContent"></div></div></div>
+  <div class="modalback" id="photoViewerModal"><div class="modal photo-viewer"><div class="modalhead"><h2>图片凭证</h2><button type="button" class="close" data-close="photoViewerModal" aria-label="返回账目详情">×</button></div><img id="fullRecordPhoto" alt="账目图片原图"></div></div>
   <div class="app-lock" id="appLockOverlay"><div><h2>简记已锁定</h2><p>使用手机的指纹、面容或屏幕锁继续</p><button id="unlockApp" type="button">解锁简记</button><small id="appLockStatus" aria-live="polite"></small></div></div>
+  <script src="life-tools.js"></script>
+  <script src="possessions.js"></script>
+  <script src="possessions-plus-model.js"></script>
   <script src="bill-import.js"></script>
   <script src="ledger-features.js"></script>
   <script src="backup-tools.js"></script>
@@ -322,6 +443,23 @@
   <script src="draft-store.js"></script>
   <script src="ux-app.js"></script>
   <script src="comfort-app.js"></script>
+  <script src="reporting.js"></script>
+  <script src="polish-app.js"></script>
+  <script src="share-report.js"></script>
+  <script src="report-poster.js"></script>
+  <script src="report-app.js"></script>
+  <script src="social-report.js"></script>
+  <script src="chat-outbox.js"></script>
+  <script src="social-app.js"></script>
+  <script src="social-my.js"></script>
+  <script src="social-friends.js"></script>
+  <script src="life-app.js"></script>
+  <script src="cloud-app.js"></script>
+  <script src="challenge-app.js"></script>
+  <script src="annual-poster.js"></script>
+  <script src="possessions-app.js"></script>
+  <script src="possessions-plus.js"></script>
+  <script src="possessions-poster.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
